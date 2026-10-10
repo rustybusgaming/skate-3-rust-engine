@@ -15,6 +15,17 @@ mod apt_vm;
 mod hud_runtime;
 #[path = "../../skate-game/src/scoring_runtime.rs"]
 mod scoring_runtime;
+// scoring_runtime logs through `bevy::log::info!`. There is no Bevy here, so
+// that path resolves to this crate, where the log lines are type-checked and dropped.
+extern crate self as bevy;
+mod log {
+    macro_rules! info {
+        (target: $target:expr, $($arg:tt)+) => {{
+            let _ = ($target, format_args!($($arg)+));
+        }};
+    }
+    pub(crate) use info;
+}
 use skate_core::{
     animation::output::attributes::AttributeName, physics::filtered_state::FilteredCategory,
 };
@@ -36,8 +47,12 @@ fn frame(
         forward: [0., 0., 1.],
         switch: false,
         fakie: false,
-        nollie: false,
+        regular: true,
+        player_basis: [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]],
+        board_basis: [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]],
+        reckoning_up: [0., 1., 0.],
         body_flip: false,
+        front_flip: false,
         suspend_air: false,
         landing: Default::default(),
         teleported: false,

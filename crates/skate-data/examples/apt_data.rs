@@ -97,13 +97,25 @@ fn main() -> Result<(), String> {
             }
         }
     }
-    let Value::Object(class) = vm.get(vm.global, "trickdisplay2") else {
+    let Value::Object(_) = vm.get(vm.global, "trickdisplay2") else {
         return Err("APT class initialization failed".into());
     };
     println!("APT class initialized; {} objects", vm.objects.len());
     let screen = initial_tree(&mut vm, &json, 0, 0)?;
+    // Construct through the VM's own `new` opcode (0x40), as script would:
+    // `return new trickdisplay2(this)` run with the screen as `this`.
+    let construct: Vec<Instruction> = serde_json::from_value(serde_json::json!([
+        {"offset": 0, "opcode": 0x70},
+        {"offset": 1, "opcode": 0xb7, "operand": 1},
+        {"offset": 2, "opcode": 0xa1, "operand": "trickdisplay2"},
+        {"offset": 3, "opcode": 0x40},
+        {"offset": 4, "opcode": 0x3e}
+    ]))
+    .map_err(|e| e.to_string())?;
     vm.begin_update();
-    let instance = vm.construct(class, vec![Value::Object(screen)], &mut Audit)?;
+    let Value::Object(instance) = vm.run_on(screen, &construct, &mut Audit)? else {
+        return Err("APT constructor returned no instance".into());
+    };
     for name in [
         "mcTrickAnim0",
         "mcTrickAnim1",
