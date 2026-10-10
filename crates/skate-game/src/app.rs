@@ -34,6 +34,32 @@ fn wgpu_features() -> WgpuFeatures {
     }
 }
 
+/// Natively `profiling.rs` owns tracing, so Bevy's `LogPlugin` is off. A browser has no trace
+/// file: there `LogPlugin` stays and logs to the console.
+trait TracingOwner {
+    fn without_bevy_log(self) -> Self;
+}
+impl TracingOwner for bevy::app::PluginGroupBuilder {
+    fn without_bevy_log(self) -> Self {
+        if cfg!(target_arch = "wasm32") { self } else { self.disable::<bevy::log::LogPlugin>() }
+    }
+}
+
+/// Vulkan natively, the backend this renderer is validated on; WebGPU in the browser.
+#[cfg(not(target_arch = "wasm32"))]
+const RENDER_BACKENDS: Backends = Backends::VULKAN;
+#[cfg(target_arch = "wasm32")]
+const RENDER_BACKENDS: Backends = crate::web::BACKENDS;
+
+#[cfg(not(target_arch = "wasm32"))]
+fn window(title: String) -> Window {
+    Window { title, resolution: (1280, 800).into(), ..default() }
+}
+#[cfg(target_arch = "wasm32")]
+fn window(title: String) -> Window {
+    crate::web::window(title)
+}
+
 #[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
 pub(crate) enum FrameSet {
     Assets,
@@ -67,16 +93,12 @@ pub(crate) fn build(
                 ..default()
             })
             .set(WindowPlugin {
-                primary_window: Some(Window {
-                    title: config.multiplayer.title.clone().unwrap_or_else(||"Skate 3 Rust Engine".into()),
-                    resolution: (1280, 800).into(),
-                    ..default()
-                }),
+                primary_window: Some(window(config.multiplayer.title.clone().unwrap_or_else(||"Skate 3 Rust Engine".into()))),
                 ..default()
             })
             .set(RenderPlugin {
                 render_creation: RenderCreation::Automatic(WgpuSettings {
-                    backends: Some(Backends::VULKAN),
+                    backends: Some(RENDER_BACKENDS),
                     // Existing machine's validation layer rejects wgpu atomic shaders.
                     // This workaround belongs only to the rendering adapter.
                     instance_flags: InstanceFlags::empty(),
@@ -84,7 +106,7 @@ pub(crate) fn build(
                     ..default()
                 }),
                 ..default()
-            }).build().disable::<bevy::log::LogPlugin>()
+            }).build().without_bevy_log()
             // Gameplay and menu navigation both use raw pad states from
             // input::platform (SDL3, XInput fallback). No game system consumes
             // Bevy gamepad events/rumble; its second device backend can stall

@@ -28,9 +28,9 @@ alike). Each milestone is finished, verified, committed and reported before the 
 |---|---|---|
 | 1 | Engine-independent crates build for wasm32; prove bit parity with native and measure `mul_add` | **Done** ([determinism.md](determinism.md)) |
 | G1 | Optional graphics quality: supersampling, edge-adaptive upscaling (FSR 1), CAS sharpening, FXAA/SMAA, anisotropic filtering; defaults unchanged | **Done** ([../graphics/quality-settings.md](../graphics/quality-settings.md)) |
-| 2 | `skate-game` compiles for wasm32 (WebGPU backend, canvas window, browser logging; Windows and process-level modules, SDL3 and file asset sources gated) | Next |
+| 2 | `skate-game` compiles for wasm32 (WebGPU backend, canvas window, browser logging; Windows and process-level modules, SDL3 and file asset sources gated) | **Done** ([browser-build.md](browser-build.md)) |
 | G2 | HD texture pack loader: replacement textures by name from a folder the player fills (nothing EA-derived shipped) | Proposed |
-| 3 | Browser asset bootstrap: the player selects their own converted installation, which is read into memory; procedural format-demo map without one | Proposed |
+| 3 | Browser asset bootstrap: the player selects their own converted installation, which is read into memory; procedural format-demo map without one | Next |
 | 4 | `skate-web-server`: serves the wasm build and loader page (source link, MIME, caching), opt-in localhost operator asset mount with token | Proposed |
 | 5 | Multiplayer through the server: lobby directory and a WebSocket relay for `skate-net` snapshots | Proposed |
 | 6 | Browser input and audio (Gamepad API in the XInput shape the game expects, Web Audio output for `skate-audio`), performance pass | Proposed |
@@ -46,12 +46,12 @@ Surveyed from the tree and checked while porting; corrections to the brief's sur
 | `skate-core` (~93k lines) | Physics, state graphs, input conversion, maths. No I/O. | Builds unchanged. Bit-identical with native ([determinism.md](determinism.md)). 1,417 `mul_add` outside test files. **Four gameplay paths call the platform libm** (`atan2` for `BoardAdjustAngle`, `tan` in the offboard air selector, `sin_cos` in the manual camera, an f64 `powf` in trigger volumes). |
 | `skate-data` | Stock loaders, the `.skate` format, XEX reading. `flate2` and `zstd`. | Builds. **The C `zstd` builds for wasm32 through zstd-sys's wasm shim** (needs `clang`), and round-trips bit-exactly. Map timing uses `web-time` on wasm; texture decode runs serially there (no threads). Path-based loaders return errors until milestone 3. |
 | `skate-audio` + `skate-audio-fma` | Native port of retail AEMS audio. | Build unchanged; the FMA crate already falls back to its plain copy off x86-64. Bit-identical with native on both native copies. 56 + 26 `mul_add` outside test files. **Filter design and the panner, splice envelopes, zones and heading also call the platform libm.** |
-| `skate-dynamics` | Prop and deformation dynamics on `rapier3d =0.35.3`. | Builds; its test suite passes unchanged as wasm. **`model.rs` wraps convex decomposition in `catch_unwind`, which cannot catch anything on wasm (panics abort)**: milestone 2 must keep bad input away from it. |
-| `skate-mods` | Lua 5.4 mod VM (`mlua` vendored, `send`), `zip`, `gltf::import`. | **Does not build: `lua-src` refuses `wasm32-unknown-unknown`.** Also uses temp dirs and `std::process::id`. Needs a decision in milestone 2. |
+| `skate-dynamics` | Prop and deformation dynamics on `rapier3d =0.35.3`. | Builds; its test suite passes unchanged as wasm. **`model.rs` wraps convex decomposition in `catch_unwind`, which cannot catch anything on wasm (panics abort)**: bad input must be rejected before it once the game runs in the browser (milestone 3). |
+| `skate-mods` | Lua 5.4 mod VM (`mlua` vendored, `send`), `zip`, `gltf::import`. | Builds, without Lua: **`lua-src` refuses `wasm32-unknown-unknown`**, so `mlua` is a native-only dependency and `Vm` is an uninhabited type there whose constructor says mods need the native build. |
 | `skate-net` | Transport-neutral snapshot protocol: `lobby`, `directory`, `packed`, prediction, interpolation. | Builds. `socket` (the `socket2` buffer tuning) is native-only; `Instant` is `web-time` on wasm. Test suite identical as wasm (real-UDP tests excluded). |
 | `skate-steam-relay` | Steamworks helper executable. | Excluded from web builds. |
 | `skate-wasm-parity` | **New.** Native-vs-wasm bit parity probe ([determinism.md](determinism.md)). | Built for both. Not part of any Windows package (the build scripts select `-p skate-game` / `-p skate-steam-relay`). |
-| `skate-game` (~121k lines) | The Bevy app: `skate3rust`, `skate3-multiplayer`, `skate3-custom-models`. Modules declared in `src/main.rs`. | Milestone 2. |
+| `skate-game` (~121k lines) | The Bevy app: `skate3rust`, `skate3-multiplayer`, `skate3-custom-models`. Modules declared in `src/main.rs`. | `skate3rust` builds and boots on WebGPU, stopping at the missing installation ([browser-build.md](browser-build.md)). |
 
 Patched Bevy crates (`vendor/bevy_pbr`, `vendor/bevy_core_pipeline`, `vendor/sdl3-sys`) come in
 through `[patch.crates-io]` and are explained in `vendor/README.md`. The Bevy patches must compile and

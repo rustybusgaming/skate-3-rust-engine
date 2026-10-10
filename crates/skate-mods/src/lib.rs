@@ -1,4 +1,6 @@
 //! Lua mod packages (API 2): low-level physics/graphics hooks, no Vehicle class.
+// The browser build has no Lua (`vm::Vm`): the host-side plumbing compiles there, unused.
+#![cfg_attr(target_arch = "wasm32", allow(dead_code, unused_imports))]
 mod archive;
 pub mod audio;
 pub mod audio_content;

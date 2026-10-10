@@ -1,11 +1,13 @@
 # Web port tools
 
-Checks for the browser build ([`docs/web-port/`](../../docs/web-port/README.md)). They use no game data.
+Building and checking the browser build ([`docs/web-port/`](../../docs/web-port/README.md)). They use no game data.
 
 | File | What it does |
 |---|---|
 | `parity.sh` | Builds `skate-wasm-parity` natively and for `wasm32-unknown-unknown`, runs it natively twice (audio on its hardware-FMA copy, then `SKATE_AUDIO_FMA=0`) and as wasm in V8, and compares every digest. Exit 1 on any engine or cost mismatch. |
 | `parity.mjs` | The comparison and report half of `parity.sh`: runs the wasm build, reads the native runs, counts libm differences in ulps. |
+| `build.sh` | Builds the browser package into `target/web/dist` (`web` cargo profile, `wasm-bindgen`, the loader page with the build's commit and source link). Refuses uncommitted changes, so the GPL source link always matches. |
+| `smoke.mjs` | Serves that package on localhost and boots it in headless Chromium with WebGPU; fails on a panic, console error or page error, or if the engine never reports its adapter. Needs Playwright. |
 | `wasi-test-runner.mjs` | Cargo runner that executes `wasm32-wasip1` test binaries on Node's built-in WASI, so the stock test suites run as wasm. |
 
 ## Requirements
@@ -17,6 +19,9 @@ Checks for the browser build ([`docs/web-port/`](../../docs/web-port/README.md))
 ## Usage
 
 ```
+tools/web-port/build.sh            # the browser package, in target/web/dist
+node tools/web-port/smoke.mjs      # boot it in headless Chromium
+
 tools/web-port/parity.sh
 
 export CARGO_TARGET_WASM32_WASIP1_RUNNER="node --no-warnings $PWD/tools/web-port/wasi-test-runner.mjs"

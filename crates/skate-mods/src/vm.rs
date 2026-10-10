@@ -1,4 +1,5 @@
 use crate::{lua_list::{list, opt_list}, read_bounded, Manifest};
+#[cfg(not(target_arch = "wasm32"))]
 use mlua::{HookTriggers, Lua, LuaOptions, LuaSerdeExt, StdLib, Table, VmState};
 use serde::Deserialize;
 use serde_json::Value;
@@ -1099,6 +1100,7 @@ fn default_snapshot() -> Value {
     })
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn json_to_lua(lua: &Lua, value: &Value) -> mlua::Result<mlua::Value> {
     if value.is_null() {
         return Ok(mlua::Value::Nil);
@@ -1127,6 +1129,7 @@ fn lazy_snapshot(lua:&Lua, snapshot:Arc<Value>, physics:Option<Value>)->mlua::Re
     lazy_snapshot_fields(lua, snapshot, physics, crate::SnapshotFields::default())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn lazy_snapshot_fields(lua:&Lua, snapshot:Arc<Value>, physics:Option<Value>, fields:crate::SnapshotFields)->mlua::Result<Table> {
     let defaults=std::sync::LazyLock::force(&SNAPSHOT_DEFAULTS);
     let table=lua.create_table()?;
@@ -1156,6 +1159,7 @@ fn lazy_snapshot_fields(lua:&Lua, snapshot:Arc<Value>, physics:Option<Value>, fi
 }
 static SNAPSHOT_DEFAULTS:std::sync::LazyLock<Value>=std::sync::LazyLock::new(default_snapshot);
 
+#[cfg(not(target_arch = "wasm32"))]
 fn query_value(lua: &Lua, value: Value) -> mlua::Result<mlua::Value> {
     json_to_lua(lua, &value)
 }
@@ -1165,6 +1169,7 @@ pub const LUA_INSTRUCTIONS_PER_BUDGET_UNIT: usize = 1000;
 /// Per-callback instruction budget (each unit ~= 1000 Lua instructions).
 pub const LUA_BUDGET_UNITS: usize = 800;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub struct Vm {
     lua: Lua,
     callbacks: Table,
@@ -1174,6 +1179,7 @@ pub struct Vm {
     queue: Arc<Mutex<Vec<Command>>>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Vm {
     pub fn new(
         root: &Path,
@@ -1498,6 +1504,27 @@ impl Vm {
                 }
             }
         }
+    }
+}
+
+/// The browser build has no Lua: `mlua`'s vendored C Lua does not target wasm32-unknown-unknown.
+/// No `Vm` can exist there (the type is uninhabited), so a package loads without one and reports
+/// why, and nothing downstream can call into a mod.
+#[cfg(target_arch = "wasm32")]
+pub enum Vm {}
+
+#[cfg(target_arch = "wasm32")]
+impl Vm {
+    pub fn new(_: &Path, _: &Manifest, _: &BTreeMap<String, Value>, _: &Value) -> Result<Self, String> {
+        Err("Lua mods need the native build: the browser build has no Lua".into())
+    }
+
+    pub fn settings(&mut self, _: &BTreeMap<String, Value>) -> Result<(), String> {
+        match *self {}
+    }
+
+    pub fn call_shared(&mut self, _: &str, _: Value, _: &Arc<Value>, _: Option<Value>, _: &crate::SnapshotFields) -> Result<Vec<Command>, String> {
+        match *self {}
     }
 }
 

@@ -1,15 +1,14 @@
 //! Persistent local visual characters. Import and ECS publication are separate transactions.
 use bevy::{
-    asset::{
-        LoadState,
-        io::{AssetSourceBuilder, file::FileAssetReader},
-    },
+    asset::LoadState,
     gltf::Gltf,
     input::mouse::{MouseScrollUnit, MouseWheel},
     mesh::skinning::SkinnedMesh,
     prelude::*,
     scene::SceneInstance,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use bevy::asset::io::{AssetSourceBuilder, file::FileAssetReader};
 use serde::{Deserialize, Serialize};
 use std::{
     path::{Path, PathBuf},
@@ -142,6 +141,7 @@ pub(crate) fn library_path() -> PathBuf {
         .unwrap_or_else(std::env::temp_dir)
         .join("Skate3RustEngine/custom-characters")
 }
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn register_source(app: &mut App) {
     let cache = crate::multiplayer::appearance::cache_directory().to_owned();
     app.register_asset_source("online-characters", AssetSourceBuilder::new(move || Box::new(FileAssetReader::new(cache.clone()))));
@@ -151,6 +151,9 @@ pub(crate) fn register_source(app: &mut App) {
         AssetSourceBuilder::new(move || Box::new(FileAssetReader::new(directory.clone()))),
     );
 }
+/// The browser has no file system to read characters from (web port milestone 3).
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn register_source(_: &mut App) {}
 fn valid_id(id: &str) -> bool {
     id.len() == 64
         && id

@@ -292,6 +292,7 @@ pub(crate) fn xinput_identity(index: u32) -> Option<ControllerKind> {
     windows::identity(index)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 mod sdl {
     use super::*;
     use crate::input::controller_kind;
@@ -474,6 +475,7 @@ mod sdl {
 }
 
 enum Backend {
+    #[cfg(not(target_arch = "wasm32"))]
     Sdl(&'static sdl::Shared),
     #[cfg(windows)]
     XInput,
@@ -489,20 +491,32 @@ fn backend() -> &'static Backend {
             bevy::log::info!("Controller input: XInput (SKATE3_INPUT=xinput)");
             return Backend::XInput;
         }
-        match sdl::start() {
-            Ok(shared) => Backend::Sdl(shared),
-            #[cfg(windows)]
-            Err(error) => {
-                bevy::log::warn!("SDL gamepad input unavailable ({error}); using XInput");
-                Backend::XInput
-            }
-            #[cfg(not(windows))]
-            Err(error) => {
-                bevy::log::error!("SDL gamepad input unavailable: {error}");
-                Backend::Unavailable
-            }
-        }
+        start_sdl()
     })
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn start_sdl() -> Backend {
+    match sdl::start() {
+        Ok(shared) => Backend::Sdl(shared),
+        #[cfg(windows)]
+        Err(error) => {
+            bevy::log::warn!("SDL gamepad input unavailable ({error}); using XInput");
+            Backend::XInput
+        }
+        #[cfg(not(windows))]
+        Err(error) => {
+            bevy::log::error!("SDL gamepad input unavailable: {error}");
+            Backend::Unavailable
+        }
+    }
+}
+
+/// The browser has no SDL. Its pads arrive through the Gamepad API (web port milestone 6).
+#[cfg(target_arch = "wasm32")]
+fn start_sdl() -> Backend {
+    bevy::log::warn!("Controller input is not available in the browser build yet");
+    Backend::Unavailable
 }
 
 pub(crate) fn poll_cached(
@@ -511,6 +525,7 @@ pub(crate) fn poll_cached(
 ) -> Result<DevicePacket, DeviceError> {
     assert!(index < 4);
     match backend() {
+        #[cfg(not(target_arch = "wasm32"))]
         Backend::Sdl(shared) => {
             let _ = cache;
             sdl::poll(shared, index)

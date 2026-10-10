@@ -24,10 +24,9 @@ pub(crate) mod player_physics;
 
 pub(crate) use menu::ModMenu;
 
-use bevy::{
-    asset::io::{AssetSourceBuilder, file::FileAssetReader},
-    prelude::*,
-};
+#[cfg(not(target_arch = "wasm32"))]
+use bevy::asset::io::{AssetSourceBuilder, file::FileAssetReader};
+use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use skate_dynamics::{
@@ -206,6 +205,7 @@ impl Plugin for ModdingPlugin {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn register_source(app: &mut App) {
     let root = package_root();
     app.register_asset_source(
@@ -213,6 +213,10 @@ pub(crate) fn register_source(app: &mut App) {
         AssetSourceBuilder::new(move || Box::new(FileAssetReader::new(root.clone()))),
     );
 }
+
+/// The browser build has no Lua, so no mod packages (`skate_mods::Vm`).
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn register_source(_: &mut App) {}
 
 pub(crate) fn package_root() -> std::path::PathBuf {
     std::env::var_os("SKATE3_MODS")

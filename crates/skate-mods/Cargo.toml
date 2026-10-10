@@ -6,13 +6,16 @@ publish.workspace = true
 
 [dependencies]
 blake3 = "1.8.2"
-mlua = { version = "=0.12.1", features = ["lua54", "vendored", "serde", "send"] }
 serde.workspace = true
 serde_json.workspace = true
 skate-dynamics = { path = "../skate-dynamics" }
 skate-audio = { path = "../skate-audio" }
 gltf = { version = "=1.4.1", default-features = true }
 zip = { version = "6.0.0", default-features = false, features = ["deflate"] }
+
+# The vendored C Lua does not target wasm32-unknown-unknown: the browser build has no mod VM.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+mlua = { version = "=0.12.1", features = ["lua54", "vendored", "serde", "send"] }
 
 [[example]]
 name = "check_mod"

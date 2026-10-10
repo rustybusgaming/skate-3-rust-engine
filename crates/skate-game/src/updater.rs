@@ -39,6 +39,7 @@ fn helper_command(recover: bool, automatic: bool) -> Result<(Command, PathBuf, P
 }
 
 /// Local recovery happens before the supervisor opens the executable again.
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn recover() -> Result<bool, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     if !exe.parent().is_some_and(|p| p.join(".update-transaction/journal.json").exists()) {

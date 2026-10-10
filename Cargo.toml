@@ -24,6 +24,13 @@ strip = false
 [profile.dev.package."*"]
 opt-level = 3
 
+# The browser package (tools/web-port/build.sh): release code without debug info, which would
+# multiply the download.
+[profile.web]
+inherits = "release"
+debug = false
+strip = "debuginfo"
+
 [patch.crates-io]
 bevy_pbr = { path = "vendor/bevy_pbr" }
 bevy_core_pipeline = { path = "vendor/bevy_core_pipeline" }

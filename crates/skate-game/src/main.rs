@@ -1,5 +1,7 @@
 mod frame_timing;
 mod animation;
+// The crash supervisor is a second process; a browser tab has none.
+#[cfg(not(target_arch = "wasm32"))]
 mod crash_report;
 mod crash_context;
 mod multiplayer;
@@ -32,6 +34,8 @@ mod physics;
 mod skater_animation;
 mod verification;
 mod performance;
+// The Chrome trace goes to a file, which a browser tab cannot write; only `map_metadata` runs there.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 mod profiling;
 mod graphics_menu;
 mod graphics_quality;
@@ -61,8 +65,12 @@ mod game_audio;
 pub(crate) mod world_audio;
 pub(crate) mod ui_audio;
 mod trigger_volumes;
+#[cfg(target_arch = "wasm32")]
+mod web;
 
 fn main() -> bevy::app::AppExit {
+    // Process-level modes and services. A browser tab has none of them (`web`).
+    #[cfg(not(target_arch = "wasm32"))]
     match updater::recover() {
         Ok(true) => return bevy::app::AppExit::Success,
         Err(error) => { eprintln!("{error}"); return bevy::app::AppExit::Success; },
@@ -71,10 +79,14 @@ fn main() -> bevy::app::AppExit {
     // Setup tool mode: `--extract-ocean-pca <default.xex> <ocean-pca.json>`.
     // Before the crash supervisor, whose report window would block setup on
     // a failed (non-zero) extraction.
+    #[cfg(not(target_arch = "wasm32"))]
     if let Some(code) = extract_ocean_pca() { std::process::exit(code); }
     // Setup tool mode: `--extract-menu-tables <default.xex> <menu-tables.json>`.
+    #[cfg(not(target_arch = "wasm32"))]
     if let Some(code) = extract_menu_tables() { std::process::exit(code); }
+    #[cfg(not(target_arch = "wasm32"))]
     if let Some(code) = crash_report::entry() { std::process::exit(code); }
+    #[cfg(not(target_arch = "wasm32"))]
     let _trace = match profiling::init() {
         Ok(guard) => guard,
         Err(error) => { eprintln!("{error}"); return bevy::app::AppExit::error(); }
@@ -85,6 +97,9 @@ fn main() -> bevy::app::AppExit {
         Ok(config) => config,
         Err(error) => {
             eprintln!("{error}");
+            #[cfg(target_arch = "wasm32")]
+            return web::stopped(error);
+            #[cfg(not(target_arch = "wasm32"))]
             return bevy::app::AppExit::error();
         }
     };
@@ -183,6 +198,7 @@ mod action_host_tests;
 
 /// Writes the retail water/ocean animation table for setup (see
 /// skate_data::ocean_pca). Runs before any game initialization.
+#[cfg(not(target_arch = "wasm32"))]
 fn extract_ocean_pca() -> Option<i32> {
     let mut args = std::env::args_os().skip(1);
     if args.next()? != "--extract-ocean-pca" {
@@ -210,6 +226,7 @@ fn extract_ocean_pca() -> Option<i32> {
 
 /// Writes the retail front-end menu tables for setup (see
 /// skate_data::menu_tables). Runs before any game initialization.
+#[cfg(not(target_arch = "wasm32"))]
 fn extract_menu_tables() -> Option<i32> {
     let mut args = std::env::args_os().skip(1);
     if args.next()? != "--extract-menu-tables" {

@@ -134,6 +134,9 @@ fn installation_ready(
 }
 
 pub(crate) fn asset_root() -> Result<PathBuf, String> {
+    if cfg!(target_arch = "wasm32") {
+        return Err("No installation loaded. The browser build reads your own converted Skate 3 installation, chosen in this page; that arrives with web port milestone 3.".into());
+    }
     if std::env::args_os().any(|arg| arg == "--assets") { return Ok(PathBuf::from("assets")); }
     if let Some(root) = std::env::var_os("SKATE3_ASSETS") {
         let path = PathBuf::from(root);

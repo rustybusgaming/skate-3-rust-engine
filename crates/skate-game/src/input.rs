@@ -2,7 +2,11 @@
 use crate::app::SimulationSet;
 use bevy::prelude::*;
 
+// Device identification serves the SDL/XInput transports; the browser has neither until its
+// gamepad backend (web port milestone 6).
+#[cfg_attr(target_arch = "wasm32", allow(dead_code, unused_imports, unused_variables))]
 mod controllers;
+#[cfg_attr(target_arch = "wasm32", allow(dead_code, unused_imports, unused_variables))]
 pub(crate) mod controller_kind;
 #[cfg(test)]
 #[path = "input/tests/action_docs.rs"]
@@ -11,6 +15,7 @@ pub(crate) mod gesture_catalog;
 mod gesture_mapping_data;
 pub(crate) mod gesture_mapping;
 pub(crate) mod gesture_input;
+#[cfg_attr(target_arch = "wasm32", allow(dead_code, unused_imports, unused_variables))]
 pub(crate) mod platform;
 pub(crate) use controllers::{ControllerInput, ControllerStatus, RawInput};
 use skate_core::input::tick::TickInput;

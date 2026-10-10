@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skate 3 Rust Engine</title>
+<style>
+  :root { color-scheme: dark; --bg: #0b0d0f; --fg: #e8ecea; --dim: #8a9592; --accent: #c7f54d; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #skate3 { display: block; width: 100%; height: 100%; outline: none; }
+  #status { position: fixed; inset: 0; display: grid; place-content: center; text-align: center;
+    padding: 16px; pointer-events: none; }
+  #status h1 { margin: 0 0 8px; color: var(--accent); letter-spacing: .08em; font-size: 28px; }
+  #status p { margin: 0; max-width: 40em; color: var(--dim); }
+  #status.error p { color: #ff8a80; }
+  #status[hidden] { display: none; }
+  footer { position: fixed; left: 0; right: 0; bottom: 0; padding: 6px 16px; font-size: 12px;
+    color: var(--dim); background: color-mix(in srgb, var(--bg) 80%, transparent); }
+  footer a { color: var(--fg); }
+</style>
+</head>
+<body>
+<canvas id="skate3" tabindex="0"></canvas>
+<div id="status"><div><h1>SKATE / 3</h1><p id="message">Loading the engine…</p></div></div>
+<footer>
+  Skate 3 Rust Engine: free software under the
+  <a href="https://www.gnu.org/licenses/gpl-3.0.html">GPL-3.0-only</a>.
+  <a href="__SKATE_SOURCE__/tree/__SKATE_REVISION__">Source for this build (__SKATE_REVISION_SHORT__)</a>.
+  Unofficial; not affiliated with EA. No Skate 3 data is served from this site.
+</footer>
+<script type="module">
+  const status = document.getElementById('status');
+  const message = document.getElementById('message');
+  const fail = (text) => { status.classList.add('error'); message.textContent = text; };
+  if (!navigator.gpu) {
+    fail('This browser has no WebGPU. Use a current Chrome or Edge, or a WebGPU-enabled Firefox or Safari.');
+  } else {
+    try {
+      // The engine's `main` runs on init; it logs SKATE_WEB_READY once its WebGPU adapter is up.
+      const { default: init } = await import('./skate3rust.js');
+      await init();
+      status.hidden = true;
+    } catch (error) {
+      // winit hands control back to the browser's event loop by throwing; that is not a failure.
+      if (String(error).includes('Using exceptions for control flow')) {
+        status.hidden = true;
+      } else {
+        console.error(error);
+        fail(`The engine could not start: ${error}`);
+      }
+    }
+  }
+</script>
+</body>
+</html>
