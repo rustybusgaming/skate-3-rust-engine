@@ -3,6 +3,9 @@ use super::{StoredBlock, Texture};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub(super) fn decode(textures: &mut [Texture], blocks: &[StoredBlock<'_>], workers: usize) -> Result<usize, String> {
+    // wasm32-unknown-unknown cannot spawn threads: the browser build decodes serially.
+    #[cfg(target_arch = "wasm32")]
+    let workers = workers.min(1);
     let bytes = blocks.iter().fold(0usize, |sum, block| sum.saturating_add(block.expected));
     let workers = if bytes < 1024 * 1024 { 1 } else { workers.clamp(1, 8).min(blocks.len().max(1)) };
     if workers == 1 {
@@ -67,7 +70,8 @@ mod tests {
             decode(&mut serial, &blocks, 1).unwrap();
             for workers in [2, 4, usize::MAX] {
                 let mut parallel = make_textures();
-                assert_eq!(decode(&mut parallel, &blocks, workers).unwrap(), workers.min(8));
+                let used = if cfg!(target_arch = "wasm32") { 1 } else { workers.min(8) };
+                assert_eq!(decode(&mut parallel, &blocks, workers).unwrap(), used);
                 assert_eq!(serial, parallel);
                 for (texture, bytes) in parallel.iter().zip(&raw) { assert_eq!(&texture.rgba, bytes); }
             }

@@ -1,3 +1,5 @@
+//! Real loopback UDP: native only (`skate_net::socket` does not exist on wasm32).
+#![cfg(not(target_arch = "wasm32"))]
 use skate_net::{
     Body, Pose,
     lobby::{Info, Session},

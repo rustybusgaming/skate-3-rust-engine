@@ -1,7 +1,11 @@
 //! Little-endian SKATE01..15 reader. Layout follows the supplied
 //! SK8R15/Source/tools/blender_owned_map/SKATE_FORMAT.md and
 //! owned/world/src/owned_map_package.cpp. No geometry or physics is inferred.
-use std::{io::Read, path::Path, time::Instant};
+use std::{io::Read, path::Path};
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
 mod texture_decode;
 mod storage_v15;
 

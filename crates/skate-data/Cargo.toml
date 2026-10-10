@@ -10,3 +10,7 @@ zstd = "=0.13.3"
 skate-core = { path = "../skate-core" }
 serde.workspace = true
 serde_json.workspace = true
+
+# `std::time::Instant::now` panics on wasm32-unknown-unknown; this reads `performance.now()`.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-time = "=1.1.0"

@@ -4863,6 +4863,7 @@ dependencies = [
  "serde",
  "serde_json",
  "skate-core",
+ "web-time",
  "zstd",
 ]
 
@@ -4922,6 +4923,7 @@ dependencies = [
  "serde_json",
  "skate-core",
  "socket2",
+ "web-time",
 ]
 
 [[package]]
@@ -4930,6 +4932,19 @@ version = "0.1.0"
 dependencies = [
  "skate-net",
  "steamworks",
+]
+
+[[package]]
+name = "skate-wasm-parity"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "skate-audio",
+ "skate-audio-fma",
+ "skate-core",
+ "skate-data",
+ "wasm-bindgen",
+ "zstd",
 ]
 
 [[package]]
