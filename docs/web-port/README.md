@@ -20,13 +20,16 @@ Ground rules (from the porting brief):
 
 ## Milestones
 
-The brief's milestone list did not come through, so this plan is the working proposal. Each
-milestone is finished, verified, committed and reported before the next starts.
+The brief's milestone list did not come through, so this plan is the working proposal, with the
+graphics upgrades the owner added interleaved (G rows; they serve the native and browser builds
+alike). Each milestone is finished, verified, committed and reported before the next starts.
 
 | # | Milestone | Status |
 |---|---|---|
 | 1 | Engine-independent crates build for wasm32; prove bit parity with native and measure `mul_add` | **Done** ([determinism.md](determinism.md)) |
-| 2 | `skate-game` compiles for wasm32 (WebGPU backend, canvas window, browser logging; Windows and process-level modules, SDL3 and file asset sources gated) | Proposed |
+| G1 | Optional graphics quality: supersampling, edge-adaptive upscaling (FSR 1), CAS sharpening, FXAA/SMAA, anisotropic filtering; defaults unchanged | **Done** ([../graphics/quality-settings.md](../graphics/quality-settings.md)) |
+| 2 | `skate-game` compiles for wasm32 (WebGPU backend, canvas window, browser logging; Windows and process-level modules, SDL3 and file asset sources gated) | Next |
+| G2 | HD texture pack loader: replacement textures by name from a folder the player fills (nothing EA-derived shipped) | Proposed |
 | 3 | Browser asset bootstrap: the player selects their own converted installation, which is read into memory; procedural format-demo map without one | Proposed |
 | 4 | `skate-web-server`: serves the wasm build and loader page (source link, MIME, caching), opt-in localhost operator asset mount with token | Proposed |
 | 5 | Multiplayer through the server: lobby directory and a WebSocket relay for `skate-net` snapshots | Proposed |

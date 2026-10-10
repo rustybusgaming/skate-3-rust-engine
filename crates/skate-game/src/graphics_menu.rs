@@ -27,7 +27,10 @@ const RESOLUTIONS: &[(u32, u32)] = &[
     (2560, 1600),
     (3840, 2160),
 ];
-const SCALES: &[u32] = &[25, 50, 67, 75, 85, 100];
+/// Above 100% the scene is supersampled (`graphics_quality`).
+const SCALES: &[u32] = &[25, 50, 67, 75, 85, 100, 125, 150, 200];
+/// The largest scene target side: the WebGPU default limit, and the common minimum on desktop.
+const MAX_TARGET: u32 = 8192;
 const DAY_SPEEDS: &[u32] = &[0, 1, 10, 30, 60, 120, 360, 720];
 const LIMITS: &[u32] = &[0, 30, 60, 90, 120, 144, 165, 240];
 
@@ -46,6 +49,9 @@ struct GraphicsSettings {
     /// With the counter on: the small readout (fps, frame time, 1 % low, worst and a tiny spike
     /// graph) instead of the verbose one. Older settings files lack it and stay verbose.
     frame_stats_simple: bool,
+    /// Upscaling, sharpening, anti-aliasing and texture filtering; flat in the file.
+    #[serde(flatten)]
+    quality: crate::graphics_quality::Quality,
 }
 impl Default for GraphicsSettings {
     fn default() -> Self {
@@ -59,6 +65,7 @@ impl Default for GraphicsSettings {
             ambient_level: None,
             frame_stats: false,
             frame_stats_simple: false,
+            quality: crate::graphics_quality::Quality::default(),
         }
     }
 }
@@ -76,10 +83,14 @@ impl GraphicsSettings {
         if !LIMITS.contains(&self.fps) {
             self.fps = 0;
         }
+        self.quality = self.quality.validated();
         self
     }
     fn internal_size(&self, window: UVec2) -> UVec2 {
-        (window * self.scale / 100).max(UVec2::ONE)
+        let size = (window * self.scale / 100).max(UVec2::ONE);
+        // Supersampling a large window can pass the texture limit: keep the aspect, shrink to fit.
+        let longest = size.max_element();
+        if longest > MAX_TARGET { (size * MAX_TARGET / longest).max(UVec2::ONE) } else { size }
     }
 }
 #[derive(Resource)]
@@ -122,6 +133,12 @@ impl Menu {
     /// The counter is on in its simplified form (graphics menu row, saved).
     pub(crate) fn frame_stats_simple(&self) -> bool {
         self.settings.frame_stats && self.settings.frame_stats_simple
+    }
+    pub(crate) fn quality(&self) -> crate::graphics_quality::Quality {
+        self.settings.quality
+    }
+    pub(crate) fn scale(&self) -> u32 {
+        self.settings.scale
     }
     pub(crate) fn diagnostic_settings(&self) -> String {
         format!("{:?}", self.settings)
@@ -170,7 +187,7 @@ impl Menu {
             0 => (1000..1000 + self.maps.len()).collect(),
             1 if self.difficulty == Difficulty::Custom => std::iter::once(3).chain(300..337).chain([CAMERA_ANGLE_ROW,8,10]).collect(),
             1 => vec![3, CAMERA_ANGLE_ROW, 8, 10],
-            2 => vec![0, 1, 2, 13, 16, 17, 18, FRAME_STATS_ROW],
+            2 => [0, 1, 2, 13, 16, 17, 18, FRAME_STATS_ROW].into_iter().chain(QUALITY_ROWS).collect(),
             4 => vec![7, 11, 14, 19],
             i if i >= SECTIONS.len() => self.custom_sections.get(i-SECTIONS.len()).map_or(Vec::new(), |(_,entries)| (200..200+entries.len()).collect()),
             _ => Vec::new(),
@@ -189,7 +206,7 @@ impl Menu {
 }
 
 #[derive(Resource)]
-struct SceneTarget(Handle<Image>);
+pub(crate) struct SceneTarget(pub(crate) Handle<Image>);
 #[derive(Resource)]
 struct FramePacer(Instant);
 #[derive(Component)]
@@ -213,14 +230,15 @@ pub(crate) struct PresentationSetup;
 pub(crate) struct GraphicsMenuPlugin;
 impl Plugin for GraphicsMenuPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(FramePacer(Instant::now()))
+        app.add_plugins(crate::graphics_quality::GraphicsQualityPlugin)
+            .insert_resource(FramePacer(Instant::now()))
             .add_systems(PostStartup, setup.in_set(PresentationSetup))
             .add_systems(PreUpdate, (refresh_sections, interact, apply_custom_difficulty).chain().in_set(MenuInput).after(bevy::input::InputSystems))
             .add_systems(PreUpdate, finish_menu_travel.after(crate::map_transition::MapTransitionSet).before(crate::input::poll_controllers))
             .add_systems(PreUpdate, toggle_fullscreen.after(bevy::input::InputSystems))
             .add_systems(Update, preview_menu.before(labels))
             .add_systems(Update, custom_sliders.before(labels))
-            .add_systems(Update, (crate::map_render::advance_day, apply, labels, scroll_menu, resize_menu).chain())
+            .add_systems(Update, (crate::map_render::advance_day, apply, crate::graphics_quality::present, labels, scroll_menu, resize_menu).chain())
             .add_systems(PostUpdate, crate::map_render::position_celestial_bodies.before(bevy::transform::TransformSystems::Propagate))
             .add_systems(Last, pace);
     }
@@ -233,11 +251,7 @@ fn setup(
     cameras: Query<Entity, With<Camera3d>>,
     mut time: ResMut<Time<Virtual>>,
 ) {
-    let path = config
-        .asset_root
-        .parent()
-        .unwrap_or(&config.asset_root)
-        .join("settings/graphics.json");
+    let path = crate::graphics_quality::settings_path(&config.asset_root);
     let settings = match std::fs::read(&path) {
         Ok(bytes) => serde_json::from_slice::<GraphicsSettings>(&bytes).unwrap_or_else(|e| {
             warn!("Graphics settings: {e}");
@@ -278,6 +292,7 @@ fn setup(
         },
         ImageNode::new(target.clone()),
         UiTargetCamera(output),
+        crate::graphics_quality::Presenter,
     ));
     let data = skate_data::collections::Collections::load(&config.asset_root).expect("validated startup collections");
     let custom_defaults = Tuning::defaults(&data).expect("validated Easy difficulty");
@@ -305,7 +320,7 @@ fn setup(
                 body.spawn((Text::new(""),MenuSubtitle,TextFont {font_size:16.,..default()},TextColor(Color::srgb(0.65,0.72,0.72))));
                 body.spawn((Node {height:px(3),width:px(64),margin:UiRect::bottom(px(10)),..default()},BackgroundColor(Color::srgb(0.78,0.96,0.3))));
                 body.spawn((MenuScroll,ScrollPosition::default(),Node {flex_grow:1.,min_height:px(0),overflow:Overflow::scroll_y(),flex_direction:FlexDirection::Column,row_gap:px(8),..default()})).with_children(|list| {
-                    for i in (0..4).chain(300..337).chain(4..10).chain(11..20).chain(20..27).chain([10,FRAME_STATS_ROW]).chain(200..264).chain([50,51]).chain(1000..1000+maps.len()).chain(1_000_000..1_000_000+destinations.len()) {
+                    for i in (0..4).chain(300..337).chain(4..10).chain(11..20).chain(20..27).chain([10,FRAME_STATS_ROW]).chain(QUALITY_ROWS).chain(200..264).chain([50,51]).chain(1000..1000+maps.len()).chain(1_000_000..1_000_000+destinations.len()) {
                         list.spawn((Button,MenuRow(i),Node {flex_direction:if (300..335).contains(&i) {FlexDirection::Column} else {FlexDirection::Row},width:percent(100),min_height:px(56),flex_shrink:0.,padding:UiRect::axes(px(18),px(12)),align_items:AlignItems::Center,border_radius:BorderRadius::all(px(4)),..default()},BackgroundColor(Color::srgb(0.075,0.09,0.095))))
                             .with_children(|row| {
                                 row.spawn((MenuLabel(i),Text::new(""),TextFont {font_size:18.,..default()},TextColor(Color::WHITE)));
@@ -341,12 +356,18 @@ fn setup(
 }
 /// GRAPHICS-section rows for the game_audio volume settings.
 const FRAME_STATS_ROW: usize = 28;
+/// GRAPHICS-section rows for `graphics_quality::Quality`.
+const QUALITY_ROWS: std::ops::Range<usize> = 29..33;
+fn quality_row(row: usize) -> Option<crate::graphics_quality::Row> {
+    use crate::graphics_quality::Row;
+    match row { 29 => Some(Row::Upscaler), 30 => Some(Row::Sharpening), 31 => Some(Row::AntiAliasing), 32 => Some(Row::Anisotropy), _ => None }
+}
 const AUDIO_ROWS: std::ops::Range<usize> = 16..19;
 fn audio_row(row: usize) -> crate::game_audio::AudioRow {
     use crate::game_audio::AudioRow;
     match row { 16 => AudioRow::Master, 17 => AudioRow::Ambience, _ => AudioRow::Effects }
 }
-fn cycle<T: PartialEq + Copy>(values: &[T], value: T, direction: i32) -> T {
+pub(crate) fn cycle<T: PartialEq + Copy>(values: &[T], value: T, direction: i32) -> T {
     let index = values.iter().position(|x| *x == value).unwrap_or(0) as i32;
     values[(index + direction).rem_euclid(values.len() as i32) as usize]
 }
@@ -447,7 +468,7 @@ pub(crate) fn interact(
         if keys.just_pressed(KeyCode::ArrowDown) || nav.pressed & 2 != 0 {
             menu.selected = visible[(index + 1) % rows];
         }
-        let adjustable = (menu.section == 1 && menu.difficulty == Difficulty::Custom && (300..335).contains(&menu.selected)) || (menu.daylight && menu.selected < 3) || (!menu.multiplayer && !menu.daylight && (menu.selected < 4 || AUDIO_ROWS.contains(&menu.selected) || menu.selected == FRAME_STATS_ROW))
+        let adjustable = (menu.section == 1 && menu.difficulty == Difficulty::Custom && (300..335).contains(&menu.selected)) || (menu.daylight && menu.selected < 3) || (!menu.multiplayer && !menu.daylight && (menu.selected < 4 || AUDIO_ROWS.contains(&menu.selected) || menu.selected == FRAME_STATS_ROW || QUALITY_ROWS.contains(&menu.selected)))
             || (!menu.multiplayer && !menu.daylight && menu.section == 1 && menu.selected == CAMERA_ANGLE_ROW);
         if adjustable && (keys.just_pressed(KeyCode::ArrowLeft) || nav.pressed & 4 != 0) {
             action = Some((menu.selected, -1));
@@ -630,10 +651,13 @@ pub(crate) fn interact(
                     let now = if s.frame_stats { (true, s.frame_stats_simple) } else { (false, false) };
                     (s.frame_stats, s.frame_stats_simple) = cycle(&modes, now, direction);
                 }
+                row if QUALITY_ROWS.contains(&row) => {
+                    if let Some(quality) = quality_row(row) { quality.adjust(&mut menu.settings.quality, direction); }
+                }
                 _ => {}
             }
         }
-        if ((row < 3 || row == FRAME_STATS_ROW) && !menu.multiplayer && !menu.daylight && !day_action) || (day_action && row < 3) {
+        if ((row < 3 || row == FRAME_STATS_ROW || QUALITY_ROWS.contains(&row)) && !menu.multiplayer && !menu.daylight && !day_action) || (day_action && row < 3) {
             let save = (|| -> Result<(), String> {
                 std::fs::create_dir_all(menu.path.parent().unwrap()).map_err(|e| e.to_string())?;
                 std::fs::write(
@@ -873,6 +897,7 @@ fn labels(
                 14 => "Mods".into(),
                 16..=18 => audio.as_ref().map(|a| a.label(audio_row(label.0))).unwrap_or_default(),
                 19 => controller_label(&debug.3),
+                row if QUALITY_ROWS.contains(&row) => quality_row(row).map(|q| q.label(&s.quality, s.scale)).unwrap_or_default(),
                 FRAME_STATS_ROW => format!("Frame-time counter    {}", if !s.frame_stats { "Off" } else if s.frame_stats_simple { "Simple" } else { "Verbose" }),
                 _ => "Multiplayer".into(),
             }
@@ -897,6 +922,8 @@ fn labels(
     } else if menu.section == 1 && menu.difficulty == Difficulty::Custom && (300..335).contains(&menu.selected) {
         format!("{}\n{}", OPTIONS[menu.selected-300].description,
             if menu.custom_dirty {"Changes pending - select Apply custom tuning below. Left/Right adjusts; drag bars with the mouse."} else {"Left/Right adjusts; drag bars with the mouse. Custom starts from Easy."})
+    } else if let Some(row) = quality_row(menu.selected).filter(|_| menu.section == 2 && !menu.daylight) {
+        if menu.status.is_empty() { row.description().into() } else { format!("{}\n{}", row.description(), menu.status) }
     } else {
         menu.status.clone()
     };
@@ -1071,8 +1098,8 @@ mod tests {
             let rows = menu.rows();
             assert!(rows.contains(&menu.selected));
             assert!(rows.windows(2).all(|pair| pair[0] < pair[1]));
-            // Audio, controller identity, and frame-time rows are spawned.
-            assert!(rows.iter().all(|id| *id < 20 || *id == FRAME_STATS_ROW || *id >= 1000));
+            // Audio, controller identity, frame-time and quality rows are spawned.
+            assert!(rows.iter().all(|id| *id < 20 || *id == FRAME_STATS_ROW || QUALITY_ROWS.contains(id) || *id >= 1000));
         }
         menu.select_section(1);
         assert_eq!(menu.rows(),vec![3,CAMERA_ANGLE_ROW,8,10]);
@@ -1107,7 +1134,7 @@ mod tests {
         assert!(!SECTIONS.iter().any(|(name,_)| matches!(*name,"SESSION"|"WORLD")));
         menu.select_section(2);
         assert!(!menu.multiplayer && !menu.browser);
-        assert_eq!(menu.rows(), vec![0,1,2,13,16,17,18,FRAME_STATS_ROW]);
+        assert_eq!(menu.rows(), vec![0,1,2,13,16,17,18,FRAME_STATS_ROW,29,30,31,32]);
         menu.daylight = true;
         assert_eq!(menu.rows(), vec![0,1,2,3]);
     }
@@ -1120,6 +1147,13 @@ mod tests {
         let on = GraphicsSettings { frame_stats: true, ..default() };
         let saved: GraphicsSettings = serde_json::from_slice(&serde_json::to_vec(&on).unwrap()).unwrap();
         assert!(saved.validated().frame_stats);
+        // Quality settings sit flat beside the others, and default when absent.
+        let old: GraphicsSettings = serde_json::from_str(r#"{"width":1920,"height":1080,"scale":100,"fps":0}"#).unwrap();
+        assert_eq!(old.quality, crate::graphics_quality::Quality::default());
+        let tuned = GraphicsSettings { scale: 150, quality: crate::graphics_quality::Quality { anisotropy: 8, sharpening: 50, ..default() }, ..default() };
+        let text = serde_json::to_string(&tuned).unwrap();
+        assert!(text.contains("\"anisotropy\":8") && !text.contains("quality"), "{text}");
+        assert_eq!(serde_json::from_str::<GraphicsSettings>(&text).unwrap().validated(), tuned);
         // A counter saved as on before Simple existed opens as Verbose.
         let old_on: GraphicsSettings = serde_json::from_str(r#"{"frame_stats":true}"#).unwrap();
         assert!(old_on.frame_stats && !old_on.frame_stats_simple);
@@ -1145,6 +1179,10 @@ mod tests {
             UVec2::new(960, 540)
         );
         assert_eq!(s.internal_size(UVec2::ZERO), UVec2::ONE);
+        // Supersampling stays inside the texture limit, keeping the aspect.
+        let s = GraphicsSettings { scale: 200, ..default() };
+        assert_eq!(s.internal_size(UVec2::new(1920, 1080)), UVec2::new(3840, 2160));
+        assert_eq!(s.internal_size(UVec2::new(5120, 2880)), UVec2::new(8192, 4608));
         assert_eq!(cycle(LIMITS, 0, -1), 240);
         assert_eq!(cycle(LIMITS, 240, 1), 0);
     }

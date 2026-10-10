@@ -587,6 +587,8 @@ fn stain_opacity(texture_label: &str) -> f32 {
 pub(crate) struct MaterialTuning {
     rows: BTreeMap<String, Vec<[f32; 4]>>,
     pca_available: bool,
+    /// Anisotropic filtering of the world texture pages (0 or 1: trilinear only).
+    pub(crate) anisotropy: u16,
 }
 
 impl MaterialTuning {
@@ -599,6 +601,7 @@ impl MaterialTuning {
             Some(rows) if rows.values().flatten().flatten().all(|x| x.is_finite()) => Self {
                 rows,
                 pca_available: read_pca(root).is_some(),
+                anisotropy: 1,
             },
             _ => {
                 warn!(
@@ -751,6 +754,7 @@ pub(crate) struct MaterialTable {
     entries: Vec<Option<MaterialEntry>>,
     materials: HashMap<(u16, RenderClass), Handle<WorldMaterial>>,
     slabs: u16,
+    anisotropy: u16,
 }
 
 impl MaterialTable {
@@ -853,6 +857,7 @@ impl MaterialTable {
             entries: vec![None; map.materials.len()],
             materials: HashMap::new(),
             slabs: 0,
+            anisotropy: tuning.anisotropy,
         };
         let mut slab = Slab::new(&page_sizes);
         for (source, request) in requests.iter().enumerate() {
@@ -903,7 +908,8 @@ impl MaterialTable {
             RenderAssetUsages::RENDER_WORLD,
         ));
 
-        let pages = std::array::from_fn(|class| slab.upload_page(class, map, images));
+        let anisotropy = self.anisotropy;
+        let pages = std::array::from_fn(|class| slab.upload_page(class, map, images, anisotropy));
         let cubes = slab.upload_cubes(map, images);
         for class in RenderClass::ALL {
             let material = materials.add(WorldMaterial::with_pages(
@@ -1209,6 +1215,7 @@ impl Slab {
         class: usize,
         map: &SkateMap,
         images: &mut impl AssetSink<Image>,
+        anisotropy: u16,
     ) -> Handle<Image> {
         let Some(page) = self.pages.get(class).filter(|p| !p.layers.is_empty()) else {
             return placeholder_page(images);
@@ -1245,6 +1252,7 @@ impl Slab {
             levels,
             bytes,
             TextureViewDimension::D2Array,
+            anisotropy,
         ))
     }
 
@@ -1283,6 +1291,7 @@ impl Slab {
             levels,
             bytes,
             TextureViewDimension::CubeArray,
+            1,
         ))
     }
 }
@@ -1294,6 +1303,7 @@ fn array_image(
     levels: u32,
     bytes: Vec<u8>,
     dimension: TextureViewDimension,
+    anisotropy: u16,
 ) -> Image {
     let mut image = Image::new_uninit(
         Extent3d {
@@ -1314,13 +1324,19 @@ fn array_image(
         dimension: Some(dimension),
         ..default()
     });
-    // One sampler serves every page; per-channel clamping is a bit in the slot
-    // record, applied to the coordinates in the shader.
+    image.sampler = page_sampler(anisotropy);
+    image
+}
+
+/// One sampler serves every page; per-channel clamping is a bit in the slot
+/// record, applied to the coordinates in the shader.
+pub(crate) fn page_sampler(anisotropy: u16) -> ImageSampler {
     let mut sampler = ImageSamplerDescriptor::linear();
     sampler.address_mode_u = ImageAddressMode::Repeat;
     sampler.address_mode_v = ImageAddressMode::Repeat;
-    image.sampler = ImageSampler::Descriptor(sampler);
-    image
+    // 1 is plain trilinear. wgpu allows up to 16, and only with linear filtering, as here.
+    sampler.anisotropy_clamp = anisotropy.clamp(1, 16);
+    ImageSampler::Descriptor(sampler)
 }
 
 /// Unused bindings still need a resource of the right shape.
@@ -1332,6 +1348,7 @@ fn placeholder_page(images: &mut impl AssetSink<Image>) -> Handle<Image> {
         1,
         vec![0, 0, 0, 255],
         TextureViewDimension::D2Array,
+        1,
     ))
 }
 
@@ -1343,6 +1360,7 @@ fn placeholder_cube(images: &mut impl AssetSink<Image>) -> Handle<Image> {
         1,
         vec![0, 0, 0, 255].repeat(6),
         TextureViewDimension::CubeArray,
+        1,
     ))
 }
 
@@ -1520,6 +1538,19 @@ pub(crate) fn world_changed(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn page_sampler_defaults_to_trilinear_and_clamps_anisotropy() {
+        let anisotropy = |level| match page_sampler(level) {
+            ImageSampler::Descriptor(d) => d.anisotropy_clamp,
+            other => panic!("{other:?}"),
+        };
+        // `MaterialTuning::default()` carries 0: still trilinear, the existing image.
+        assert_eq!((anisotropy(0), anisotropy(1), anisotropy(8), anisotropy(64)), (1, 1, 8, 16));
+        let ImageSampler::Descriptor(d) = page_sampler(16) else { unreachable!() };
+        assert!([d.mag_filter, d.min_filter].iter().all(|f| *f == bevy::image::ImageFilterMode::Linear));
+        assert_eq!(d.mipmap_filter, bevy::image::ImageFilterMode::Linear);
+    }
 
     /// The per-vertex material index only works if no vertex is shared between
     /// triangles of different materials. `main` never had to care: it split

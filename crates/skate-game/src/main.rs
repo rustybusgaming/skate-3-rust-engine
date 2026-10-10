@@ -34,6 +34,7 @@ mod verification;
 mod performance;
 mod profiling;
 mod graphics_menu;
+mod graphics_quality;
 mod retail_menus;
 mod retail_menu_movies;
 mod modding;

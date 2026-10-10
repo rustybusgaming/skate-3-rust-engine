@@ -23,7 +23,7 @@ use bevy::{
         extract_component::ExtractComponentPlugin,
         extract_resource::{ExtractResource, ExtractResourcePlugin},
         render_graph::{
-            NodeRunError, RenderGraphContext, RenderGraphExt, RenderLabel, ViewNode, ViewNodeRunner,
+            NodeRunError, RenderGraph, RenderGraphContext, RenderGraphExt, RenderLabel, ViewNode, ViewNodeRunner,
         },
         render_resource::{binding_types::*, *},
         renderer::{RenderContext, RenderDevice, RenderQueue},
@@ -90,6 +90,24 @@ impl Plugin for RetailExposurePlugin {
                         Node3d::EndMainPassPostProcessing,
                     ),
                 );
+        }
+    }
+
+    // Bevy orders FXAA, SMAA and CAS after its own tonemapping only, where this tone pass also
+    // sits. Anti-aliasing and sharpening must see the toned image, and sharpening comes after
+    // anti-aliasing. Edges only: with none of them enabled the image is unchanged.
+    fn finish(&self, app: &mut App) {
+        let Some(render) = app.get_sub_app_mut(RenderApp) else { return };
+        let mut graph = render.world_mut().resource_mut::<RenderGraph>();
+        let Some(core) = graph.get_sub_graph_mut(Core3d) else { return };
+        for (from, to) in [
+            (ExposureLabel.intern(), Node3d::Fxaa.intern()),
+            (ExposureLabel.intern(), Node3d::Smaa.intern()),
+            (Node3d::Smaa.intern(), Node3d::ContrastAdaptiveSharpening.intern()),
+        ] {
+            if let Err(error) = core.try_add_node_edge(from, to) {
+                warn!("Post-process order {from:?} -> {to:?}: {error}");
+            }
         }
     }
 }
@@ -281,7 +299,7 @@ fn prune_bindings(pipeline: Res<Pipeline>, views: Query<&ViewTarget, With<Retail
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
-struct ExposureLabel;
+pub(crate) struct ExposureLabel;
 
 #[derive(Default)]
 struct ExposureNode;
