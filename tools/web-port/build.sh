@@ -28,6 +28,13 @@ fi
 # The repository the page points to; defaults to this checkout's origin.
 source=${SKATE_SOURCE_URL:-$(git remote get-url origin | sed -e 's#^git@github\.com:#https://github.com/#' -e 's#\.git$##')}
 
+# zstd's C sources need a clang with a wasm32 target. Apple's has none; Homebrew's LLVM does.
+if [ "$(uname -s)" = Darwin ] && [ -z "${CC_wasm32_unknown_unknown:-}" ] && command -v brew >/dev/null 2>&1; then
+    llvm=$(brew --prefix llvm 2>/dev/null || true)
+    if [ -x "$llvm/bin/clang" ]; then
+        export CC_wasm32_unknown_unknown="$llvm/bin/clang" AR_wasm32_unknown_unknown="$llvm/bin/llvm-ar"
+    fi
+fi
 cargo build --locked --profile web -p skate-game --bin skate3rust --target wasm32-unknown-unknown --no-default-features
 rm -rf "$out"
 mkdir -p "$out"

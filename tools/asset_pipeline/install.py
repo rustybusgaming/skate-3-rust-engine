@@ -10,6 +10,19 @@ GIB=1024**3
 
 def available_memory():
     """Available physical memory in bytes, or None where it cannot be queried."""
+    if sys.platform=='linux':
+        try:
+            with open('/proc/meminfo',encoding='ascii') as meminfo:
+                return next(int(line.split()[1])*1024 for line in meminfo if line.startswith('MemAvailable:'))
+        except (OSError,ValueError,StopIteration):return None
+    if sys.platform=='darwin':
+        # Free, inactive and speculative pages: what macOS can hand out without swapping.
+        try:
+            report=subprocess.run(['vm_stat'],capture_output=True,text=True,check=True).stdout
+            page=int(re.search(r'page size of (\d+) bytes',report).group(1))
+            pages={name:int(count) for name,count in re.findall(r'Pages (free|inactive|speculative):\s+(\d+)',report)}
+            return page*sum(pages.values()) if pages else None
+        except (OSError,ValueError,AttributeError,subprocess.CalledProcessError):return None
     if os.name!='nt':return None
     import ctypes
     class Memory(ctypes.Structure):
@@ -128,7 +141,16 @@ def unpack_zip(archive,destination):
             if (info.external_attr>>16)&0o170000==0o120000:raise RuntimeError('Tool archive contains a symbolic link')
         z.extractall(destination)
 
+# Outside Windows the pinned downloads (Windows programs) give way to the same tools installed on
+# the system: Homebrew's vgmstream is the pinned release (docs/web-port/setup.md).
+HOST_PACKAGES={'vgmstream-cli':'vgmstream'}
+
 def dependency(cache,name,url,sha,report):
+    if os.name!='nt':
+        executable=shutil.which(name)
+        if executable is None:
+            raise OSError(f'{name} is not installed'+(f' (brew install {HOST_PACKAGES[name]})' if name in HOST_PACKAGES else ''))
+        return Path(executable)
     folder=cache/name
     marker=folder/'.complete'
     if not marker.is_file():

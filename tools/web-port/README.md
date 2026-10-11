@@ -1,6 +1,7 @@
 # Web port tools
 
-Building and checking the browser build ([`docs/web-port/`](../../docs/web-port/README.md)). They use no game data.
+Building and checking the browser build ([`docs/web-port/`](../../docs/web-port/README.md)), and setting up
+from your own ISO on macOS or Linux. They contain no game data.
 
 | File | What it does |
 |---|---|
@@ -10,15 +11,21 @@ Building and checking the browser build ([`docs/web-port/`](../../docs/web-port/
 | `compress.mjs` | Writes the gzip and brotli copies `build.sh` puts beside each served file. |
 | `smoke.mjs` | Serves that package on localhost and drives it in headless Chromium with WebGPU: the folder picker, a folder with no installation, and a synthetic installation (no game data) that startup must load up to its placeholder input config, retrying once for a withheld file. On that page, a texture pack in the package must replace the demo map's checker (read on a retry once the map is parsed), a fake standard pad must reach controller slot 0 through the Gamepad API, and audio must keep its schedule across a main-thread stall. Fails on a panic, console error or page error. Needs Playwright. |
 | `installation.test.mjs` | `node --test` checks of the page's installation finder and store (`web/installation.js`). |
+| `wasi-test-runner.mjs` | Cargo runner that executes `wasm32-wasip1` test binaries on Node's built-in WASI, so the stock test suites run as wasm. |
+| `convert.sh` | Sets up Skate 3 from your own Xbox 360 ISO on macOS or Linux ([docs/web-port/setup.md](../../docs/web-port/setup.md)): a Python environment with setup's pinned packages, a native engine build for setup's checks and the native RefPack decoder, then `convert.py`. |
+| `convert.py` | Asks for the ISO (Finder, zenity or kdialog), checks the disc's file names, extracts it with `xiso.py` and runs the Windows setup's conversion (`tools/asset_pipeline`). |
+| `xiso.py` | Xbox 360 disc images (XDVDFS): lists or extracts one, in place of extract-xiso (`xiso.py list IMAGE`, `xiso.py extract IMAGE FOLDER`). |
+| `test_xiso.py`, `test_convert.py` | `unittest` checks of both, with synthetic disc images. |
 
 The server itself is `crates/skate-web-server` ([docs/web-port/server.md](../../docs/web-port/server.md)): `cargo run --release -p skate-web-server`.
-| `wasi-test-runner.mjs` | Cargo runner that executes `wasm32-wasip1` test binaries on Node's built-in WASI, so the stock test suites run as wasm. |
 
 ## Requirements
 
 - `rustup target add wasm32-unknown-unknown wasm32-wasip1`
 - `cargo install wasm-bindgen-cli --version =0.2.127 --locked` (the version in `Cargo.lock`)
-- Node 22, and `clang` for zstd-sys's C sources on wasm32
+- Node 22, and `clang` for zstd-sys's C sources on wasm32. On macOS, Apple's clang has no wasm32 target:
+  `brew install llvm`, which `build.sh` then finds itself.
+- For `convert.sh`: Python 3.11 to 3.13, CMake and vgmstream (macOS: `brew install python@3.13 cmake vgmstream`).
 
 ## Usage
 
@@ -27,6 +34,9 @@ tools/web-port/build.sh            # the browser package, in target/web/dist
 cargo run --release -p skate-web-server   # serve it at http://127.0.0.1:8080/
 node tools/web-port/smoke.mjs      # drive it in headless Chromium (and through the server, once built)
 node --test tools/web-port/installation.test.mjs
+
+tools/web-port/convert.sh          # set up from your ISO (macOS, Linux)
+python3 -m unittest discover -s tools/web-port -p 'test_*.py'
 
 tools/web-port/parity.sh
 

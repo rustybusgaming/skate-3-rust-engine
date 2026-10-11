@@ -32,6 +32,7 @@ alike). Each milestone is finished, verified, committed and reported before the 
 | G2 | HD texture pack loader: replacement textures by name from a folder the player fills (nothing EA-derived shipped) | **Done** ([../graphics/texture-packs.md](../graphics/texture-packs.md)) |
 | 3 | Browser installation: the player chooses their own converted installation, read from their disk as the engine needs it; startup, maps and the asset server run from it | **Done** ([installation.md](installation.md)) |
 | 4 | `skate-web-server`: serves the wasm build and loader page (source link, MIME, caching), opt-in localhost operator asset mount with token; a smaller download | **Done** ([server.md](server.md)) |
+| S | Setup from the player's own ISO on macOS and Linux (`tools/web-port/convert.sh`): the Windows setup's conversion, with a built-in disc image reader and system tools in place of its Windows-only downloads | **Done** ([setup.md](setup.md)) |
 | 5 | Multiplayer through the server: lobby directory and a WebSocket relay for `skate-net` snapshots | Next |
 | 6 | Browser input and audio (Gamepad API in the XInput shape the game expects, Web Audio output for `skate-audio`), performance pass | **Done** ([input-audio.md](input-audio.md)) |
 
@@ -93,4 +94,5 @@ Checked on x86-64 Linux at the start of the port (the Windows release build is u
 ## Tooling
 
 [`tools/web-port/`](../../tools/web-port/README.md): the browser package build and its headless
-browser test, the parity probe runner and a Node WASI runner for the stock test suites.
+browser test, the parity probe runner, a Node WASI runner for the stock test suites, and setup
+from the player's ISO on macOS and Linux ([setup.md](setup.md)).

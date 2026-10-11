@@ -6,9 +6,9 @@ disk as the engine needs them, and keeps the settings the engine writes in the b
 
 ## Testing it with your installation
 
-1. Convert your copy with the native setup, as for the Windows build. That gives a package folder
-   holding `data/installation.json` and `data/installations/<id>/` (`assets/`, `maps/`,
-   `settings/`).
+1. Convert your copy: on Windows with the game's own setup, on macOS or Linux from your ISO with
+   `tools/web-port/convert.sh` ([setup.md](setup.md)). That gives a package folder holding
+   `data/installation.json` and `data/installations/<id>/` (`assets/`, `maps/`, `settings/`).
 2. Build the browser package (Linux, macOS, or Git Bash on Windows; the requirements are in
    [`tools/web-port/README.md`](../../tools/web-port/README.md)):
 
@@ -101,7 +101,7 @@ saved(path, bytes) → IndexedDB ◄───  settings written by the engine
 |---|---|---|
 | Multiplayer | No UDP or Steam relay in a browser | Milestone 5 (WebSocket relay) |
 | Lua mods, imported custom characters | No Lua build for wasm32; the character library lives in `%LOCALAPPDATA%` | — |
-| Setup and the installation check | The page cannot run the setup tool; it only checks for `assets/private/game.json`. Refresh an outdated installation natively | — |
+| Setup and the installation check | The page cannot run the setup tool; it only checks for `assets/private/game.json`. Set up or refresh an installation natively: the Windows setup, or `convert.sh` on macOS and Linux ([setup.md](setup.md)) | — |
 | FPS cap | The browser paces frames to the display | — |
 
 ## The synthetic installation
