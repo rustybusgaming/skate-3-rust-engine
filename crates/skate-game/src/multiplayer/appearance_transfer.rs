@@ -58,9 +58,10 @@ impl Exchange {
 /// Also used by the owned-asset test before loading the received GLB in Bevy.
 #[cfg(test)]
 pub(super) fn transfer_over_udp(model: Vec<u8>) -> Vec<u8> {
+    use bevy::platform::time::Instant;
     use std::{
         net::UdpSocket,
-        time::{Duration, Instant},
+        time::Duration,
     };
     let sockets: Vec<_> = (0..3)
         .map(|_| {

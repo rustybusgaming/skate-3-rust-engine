@@ -133,7 +133,12 @@ fn installation_ready(
         && customiser_current(assets, expected_customiser)
 }
 
+// The browser build has no package folder beside an exe: the page mounts the installation the
+// player chose (`web`).
+#[cfg_attr(target_arch = "wasm32", allow(unreachable_code))]
 pub(crate) fn asset_root() -> Result<PathBuf, String> {
+    #[cfg(target_arch = "wasm32")]
+    return crate::web::asset_root();
     if std::env::args_os().any(|arg| arg == "--assets") { return Ok(PathBuf::from("assets")); }
     if let Some(root) = std::env::var_os("SKATE3_ASSETS") {
         let path = PathBuf::from(root);

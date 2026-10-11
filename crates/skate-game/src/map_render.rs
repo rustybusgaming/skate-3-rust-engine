@@ -161,7 +161,9 @@ impl PreparedScene {
             return;
         };
         self.retail = crate::retail_render::RetailScene::for_map(map);
-        let tuning = crate::retail_render::MaterialTuning::load(asset_root);
+        let mut tuning = crate::retail_render::MaterialTuning::load(asset_root);
+        // The player's texture filtering: the menu saves it, so a map (re)load picks it up here.
+        tuning.anisotropy = crate::graphics_quality::saved(asset_root).anisotropy;
         // The sky is loaded before the world because its authored fog frame and
         // sun direction are encoded into the per-material storage buffer while
         // the material table is built, not patched in afterwards.

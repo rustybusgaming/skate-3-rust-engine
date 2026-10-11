@@ -13,6 +13,7 @@ use bevy::log::tracing_subscriber::{
     util::SubscriberInitExt,
 };
 use bevy::prelude::*;
+use bevy::platform::time::Instant;
 use std::{
     fs::File,
     io::{BufWriter, Write},
@@ -21,7 +22,6 @@ use std::{
         Mutex, OnceLock,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
-    time::Instant,
 };
 
 /// Set once by `init()` so `install()` can reach the same capture state without

@@ -1,0 +1,24 @@
+[package]
+name = "skate-wasm-parity"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Native-vs-wasm32 bit parity probe for the engine crates the browser build runs"
+
+[[bin]]
+name = "skate-wasm-parity"
+path = "src/main.rs"
+test = false
+
+[dependencies]
+skate-core.workspace = true
+skate-data.workspace = true
+skate-audio = { path = "../skate-audio" }
+skate-audio-fma = { path = "../skate-audio-fma" }
+# The codec versions skate-data decodes `.skate` blocks with.
+flate2 = "=1.1.10"
+zstd = "=0.13.3"
+
+# The wasm build is driven from JavaScript (tools/web-port/parity.mjs, and later the browser).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "=0.2.127"

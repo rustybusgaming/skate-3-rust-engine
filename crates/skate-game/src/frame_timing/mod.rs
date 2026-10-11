@@ -24,9 +24,10 @@ pub(crate) mod stats;
 
 use bevy::app::{RunFixedMainLoop, RunFixedMainLoopSystems};
 use bevy::prelude::*;
+use bevy::platform::time::Instant;
 use std::{
     collections::VecDeque,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 /// Seconds of frames the lows, the worst frame and the hitch count cover.
@@ -268,8 +269,8 @@ impl Plugin for FrameTimingPlugin {
 /// Start of a frame (first system of `First`): closes the previous frame.
 fn begin_frame(mut timing: ResMut<FrameTiming>, sink: Option<Res<FrameLogSink>>) {
     let now = Instant::now();
-    let wall_unix_s = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+    let wall_unix_s = crate::wall_clock::SystemTime::now()
+        .duration_since(crate::wall_clock::UNIX_EPOCH)
         .map_or(0.0, |d| d.as_secs_f64());
     let Some((started, started_wall)) = timing.frame_started.replace((now, wall_unix_s)) else {
         return;
@@ -544,13 +545,13 @@ mod tests {
         assert_eq!(stats, logged);
         assert!(frames >= 599, "{frames}");
         assert_eq!(steps, plain.steps);
-        let text = std::fs::read_to_string(&path).unwrap();
+        let text = skate_fs::read_to_string(&path).unwrap();
         let rows: Vec<log::Row> = text.lines().skip(2).map(|l| log::parse_row(l).expect(l)).collect();
         assert_eq!(rows.len() as u64, frames);
         let last_steps = steps - rows.iter().map(|r| u64::from(r.fixed_steps)).sum::<u64>();
         assert!(last_steps <= 8, "only the final frame's steps are unlogged: {last_steps}");
         assert!(rows.iter().all(|r| r.main_ms <= r.frame_ms + 0.01), "a frame contains its schedules");
-        let _ = std::fs::remove_file(path);
+        let _ = skate_fs::remove_file(path);
     }
 
     /// Diagnostics never change the game: no system here writes any resource

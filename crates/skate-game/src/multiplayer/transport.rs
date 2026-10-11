@@ -1,9 +1,10 @@
 use skate_net::directory::{self, Command as LobbyCommand, Event, Request, Response};
+use bevy::platform::time::Instant;
 use std::{
     io,
     net::{SocketAddr, UdpSocket},
     process::{Child, Command, Stdio},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 /// Platform adapters move opaque bounded datagrams; session/actors live above this.
@@ -40,6 +41,8 @@ impl Direct {
     pub fn new(bind: SocketAddr) -> io::Result<Self> {
         endpoint(bind)?;
         let socket = UdpSocket::bind(bind)?;
+        // Browsers have no UDP (bind already fails there); their transport is the relay (web port).
+        #[cfg(not(target_arch = "wasm32"))]
         skate_net::socket::configure(&socket)?;
         Ok(Self { socket })
     }
@@ -99,6 +102,7 @@ pub(super) struct Steam {
 impl Steam {
     pub fn new(peer: u64, session: u64) -> Result<Self, String> {
         let socket = UdpSocket::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
+        #[cfg(not(target_arch = "wasm32"))]
         skate_net::socket::configure(&socket).map_err(|e| e.to_string())?;
         let dir = std::env::current_exe()
             .map_err(|e| e.to_string())?

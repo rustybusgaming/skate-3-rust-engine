@@ -250,7 +250,7 @@ fn e2e_render() {
                 }
                 continue;
             }
-            let t0 = std::time::Instant::now();
+            let t0 = bevy::platform::time::Instant::now();
             // E2E_SUBSTEPS: every ticking call of a row is a pass on the row's sample.
             if call > 0 {
                 cues.publish(row_riding);
@@ -283,9 +283,9 @@ fn e2e_render() {
             bed.write_inputs(&mut m, &s, !p.rolling_on);
             let speed_scale = bed.push_scale();
             let loose = PlayerAudio::loose_board(&s, &riding);
-            let t1 = std::time::Instant::now();
+            let t1 = bevy::platform::time::Instant::now();
             p.process(&mut m, &s, &mut shared.lock().unwrap(), speed_scale, loose);
-            let t2 = std::time::Instant::now();
+            let t2 = bevy::platform::time::Instant::now();
             if p.body_trace() != body_seen {
                 body_seen = p.body_trace();
                 writeln!(body, "{frame}\t{}\t{:016x}", body_seen.0, body_seen.1).unwrap();
@@ -302,7 +302,7 @@ fn e2e_render() {
             for _ in 0..mix_calls {
                 m.tick(skate_audio::mixmap::cadence::CONSOLE_DT);
             }
-            let t3 = std::time::Instant::now();
+            let t3 = bevy::platform::time::Instant::now();
             if let Some((first, ticks)) = teleport {
                 let k = frame as i64 - first as i64 + 1;
                 p.teleport_effect = (1..=ticks as i64 + 2).contains(&k).then(|| (k as f32 / ticks as f32).min(1.0));
@@ -310,7 +310,7 @@ fn e2e_render() {
             p.update(&m, &s, &mut shared.lock().unwrap(), speed_scale, loose);
             shared.lock().unwrap().mixer.buses.flange.frame(std::array::from_fn(|i| m.level(keys::REVERB, i)));
             shared.lock().unwrap().mixer.buses.env.scale_frame(m.level(keys::REVERB, 4));
-            let t4 = std::time::Instant::now();
+            let t4 = bevy::platform::time::Instant::now();
             let routed = p.rolling_on.then(|| (std::mem::take(&mut p.routed.grains), p.routed.primary));
             bed.slew_calls = Some(mix_calls);
             super::grain_bed::step(&mut bed, &library, &m, &shared, &riding, call_dt, &seams, routed);
@@ -318,16 +318,16 @@ fn e2e_render() {
                 let (turn, brake) = bed.slews();
                 writeln!(w, "{frame}	{mix_calls}	{}	{}	{}	{turn}	{}	{brake}", s.turn, s.com_speed(), turn.abs(), u8::from(riding.braking)).unwrap();
             }
-            let t5 = std::time::Instant::now();
+            let t5 = bevy::platform::time::Instant::now();
             if timing && frame >= 60 {
-                let us = |a: std::time::Instant, b: std::time::Instant| (b - a).as_secs_f64() * 1e6;
+                let us = |a: bevy::platform::time::Instant, b: bevy::platform::time::Instant| (b - a).as_secs_f64() * 1e6;
                 game_us.push((us(t0, t5), frame - 60, [us(t0, t1), us(t1, t2), us(t2, t3), us(t3, t4), us(t4, t5)]));
             }
             owed += blocks_per_frame / per_row as f64;
             let mut rt = shared.lock().unwrap();
             while owed >= 1.0 {
                 owed -= 1.0;
-                let tb = std::time::Instant::now();
+                let tb = bevy::platform::time::Instant::now();
                 let bus = rt.render_block();
                 if timing && frame >= 60 {
                     block_us.push(tb.elapsed().as_secs_f64() * 1e6);

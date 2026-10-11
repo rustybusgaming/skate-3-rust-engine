@@ -164,13 +164,26 @@ pub fn validate_package_content_at(path: &Path) -> Result<(Manifest, Option<crat
     if source.starts_with('\u{1b}') {
         return Err("Lua bytecode is unsupported".into());
     }
+    compile_check(source)?;
+    let audio = crate::audio_content::load(&root)?;
+    Ok((manifest, audio, PackageRoot { path: root, _cache: cache }))
+}
+
+/// The entry script must compile as Lua text.
+#[cfg(not(target_arch = "wasm32"))]
+fn compile_check(source: &str) -> Result<(), String> {
     mlua::Lua::new()
         .load(source)
         .set_mode(mlua::chunk::ChunkMode::Text)
         .into_function()
-        .map_err(|e| e.to_string())?;
-    let audio = crate::audio_content::load(&root)?;
-    Ok((manifest, audio, PackageRoot { path: root, _cache: cache }))
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/// The browser build has no Lua (`vm::Vm`), so no package can load there.
+#[cfg(target_arch = "wasm32")]
+fn compile_check(_: &str) -> Result<(), String> {
+    Err("Lua mods need the native build: the browser build has no Lua".into())
 }
 
 pub fn read_bounded(root: &Path, relative: &str, limit: u64) -> Result<Vec<u8>, String> {

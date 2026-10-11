@@ -1,4 +1,6 @@
 //! Lua mod packages (API 2): low-level physics/graphics hooks, no Vehicle class.
+// The browser build has no Lua (`vm::Vm`): the host-side plumbing compiles there, unused.
+#![cfg_attr(target_arch = "wasm32", allow(dead_code, unused_imports))]
 mod archive;
 pub mod audio;
 pub mod audio_content;
@@ -33,8 +35,12 @@ use serde_json::Value;
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
-    time::{Duration, Instant},
+    time::Duration,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
 
 /// `SKATE3_MODS_ENABLE=<id>[,<id>…]` lists mods that start enabled without a saved preference
 /// (dev and test mods whose manifest has `"enabled_by_default": false`). A saved preference wins.
@@ -124,7 +130,8 @@ impl Manager {
             preferences,
             commands: vec![],
             retired: vec![],
-            last_scan: Instant::now() - Duration::from_secs(2),
+            // A browser's clock starts at page load, so this can be under two seconds in.
+            last_scan: Instant::now().checked_sub(Duration::from_secs(2)).unwrap_or_else(Instant::now),
             snapshot: std::sync::Arc::new(Value::Null),
             snapshot_fields: SnapshotFields::default(),
             invalid_since: BTreeMap::new(),

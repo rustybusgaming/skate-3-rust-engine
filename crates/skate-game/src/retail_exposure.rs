@@ -23,7 +23,7 @@ use bevy::{
         extract_component::ExtractComponentPlugin,
         extract_resource::{ExtractResource, ExtractResourcePlugin},
         render_graph::{
-            NodeRunError, RenderGraphContext, RenderGraphExt, RenderLabel, ViewNode, ViewNodeRunner,
+            NodeRunError, RenderGraph, RenderGraphContext, RenderGraphExt, RenderLabel, ViewNode, ViewNodeRunner,
         },
         render_resource::{binding_types::*, *},
         renderer::{RenderContext, RenderDevice, RenderQueue},
@@ -92,6 +92,24 @@ impl Plugin for RetailExposurePlugin {
                 );
         }
     }
+
+    // Bevy orders FXAA, SMAA and CAS after its own tonemapping only, where this tone pass also
+    // sits. Anti-aliasing and sharpening must see the toned image, and sharpening comes after
+    // anti-aliasing. Edges only: with none of them enabled the image is unchanged.
+    fn finish(&self, app: &mut App) {
+        let Some(render) = app.get_sub_app_mut(RenderApp) else { return };
+        let mut graph = render.world_mut().resource_mut::<RenderGraph>();
+        let Some(core) = graph.get_sub_graph_mut(Core3d) else { return };
+        for (from, to) in [
+            (ExposureLabel.intern(), Node3d::Fxaa.intern()),
+            (ExposureLabel.intern(), Node3d::Smaa.intern()),
+            (Node3d::Smaa.intern(), Node3d::ContrastAdaptiveSharpening.intern()),
+        ] {
+            if let Err(error) = core.try_add_node_edge(from, to) {
+                warn!("Post-process order {from:?} -> {to:?}: {error}");
+            }
+        }
+    }
 }
 
 fn load(
@@ -115,13 +133,13 @@ fn load(
         .and_then(|p| p.file_stem())
         .and_then(|name| {
             let bytes =
-                std::fs::read(config.asset_root.join("private/exposure-profiles.json")).ok()?;
+                skate_fs::read(config.asset_root.join("private/exposure-profiles.json")).ok()?;
             let mut profiles: std::collections::BTreeMap<String, Authored> =
                 serde_json::from_slice(&bytes).ok()?;
             profiles.remove(&name.to_string_lossy().to_lowercase())
         });
     let fallback = || {
-        std::fs::read(config.asset_root.join("private/exposure.json"))
+        skate_fs::read(config.asset_root.join("private/exposure.json"))
             .ok()
             .and_then(|b| serde_json::from_slice::<Authored>(&b).ok())
     };
@@ -281,7 +299,7 @@ fn prune_bindings(pipeline: Res<Pipeline>, views: Query<&ViewTarget, With<Retail
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
-struct ExposureLabel;
+pub(crate) struct ExposureLabel;
 
 #[derive(Default)]
 struct ExposureNode;

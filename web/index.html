@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skate 3 Rust Engine</title>
+<style>
+  :root { color-scheme: dark; --bg: #0b0d0f; --fg: #e8ecea; --dim: #8a9592; --accent: #c7f54d; --error: #ff8a80; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #skate3 { display: block; width: 100%; height: 100%; outline: none; }
+  #status { position: fixed; inset: 0; display: grid; place-content: center; text-align: center;
+    padding: 16px; background: var(--bg); }
+  #status h1 { margin: 0 0 8px; color: var(--accent); letter-spacing: .08em; font-size: 28px; }
+  #status p { margin: 0 auto; max-width: 40em; color: var(--dim); }
+  #status #message { color: var(--fg); min-height: 1.5em; }
+  #status.error #message { color: var(--error); white-space: pre-wrap; }
+  #status[hidden], [hidden] { display: none; }
+  #actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 20px 0 12px; }
+  button { font: inherit; padding: 8px 16px; border-radius: 6px; border: 1px solid var(--accent);
+    background: transparent; color: var(--fg); cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--bg); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  footer { position: fixed; left: 0; right: 0; bottom: 0; padding: 6px 16px; font-size: 12px;
+    color: var(--dim); background: color-mix(in srgb, var(--bg) 80%, transparent); }
+  footer a { color: var(--fg); }
+</style>
+</head>
+<body>
+<canvas id="skate3" tabindex="0"></canvas>
+<div id="status">
+  <div>
+    <h1>SKATE / 3</h1>
+    <p id="message">Loading…</p>
+    <div id="actions" hidden>
+      <button id="choose" class="primary">Choose installation folder</button>
+      <button id="again" hidden></button>
+    </div>
+    <p id="help" hidden>
+      Choose your converted installation: the Skate 3 Rust Engine package folder, its
+      <code>data</code> folder, or <code>data/installations/&lt;id&gt;</code>. Convert your own copy
+      with the native setup first. The folder is read on this computer, as the game needs it:
+      nothing is uploaded, and settings you change are kept in this browser.
+    </p>
+    <input id="folder" type="file" webkitdirectory hidden>
+  </div>
+</div>
+<footer>
+  Skate 3 Rust Engine: free software under the
+  <a href="https://www.gnu.org/licenses/gpl-3.0.html">GPL-3.0-only</a>.
+  <a href="__SKATE_SOURCE__/tree/__SKATE_REVISION__">Source for this build (__SKATE_REVISION_SHORT__)</a>.
+  Unofficial; not affiliated with EA. No Skate 3 data is served from this site.
+</footer>
+<script type="module">
+  import { chooseFolder, fromHandle, mount, rememberedFolder } from './installation.js';
+
+  const status = document.getElementById('status');
+  const message = document.getElementById('message');
+  const actions = document.getElementById('actions');
+  const help = document.getElementById('help');
+  const choose = document.getElementById('choose');
+  const again = document.getElementById('again');
+  const show = (text) => { status.classList.remove('error'); message.textContent = text; };
+  const fail = (text) => {
+    status.hidden = false;
+    status.classList.add('error');
+    message.textContent = text;
+  };
+
+  // The engine reports through these (crates/skate-game/src/web.rs).
+  globalThis.skatePage = {
+    status: show,
+    running: () => { status.hidden = true; document.getElementById('skate3').focus(); },
+    stopped(text) {
+      fail(text);
+      // The engine cannot start twice in one page: choosing again reloads it.
+      choose.textContent = 'Choose another folder';
+      choose.onclick = () => location.reload();
+      again.hidden = true;
+      actions.hidden = false;
+      choose.disabled = false;
+    },
+  };
+
+  async function start(list) {
+    actions.hidden = true;
+    help.hidden = true;
+    try {
+      const { files } = await mount(await list(), show);
+      show(`Found an installation of ${files.toLocaleString()} files. Loading the engine…`);
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        show('Choose your installation folder to play.');
+        actions.hidden = false;
+        help.hidden = false;
+      } else {
+        globalThis.skatePage.stopped(String(error?.message ?? error));
+      }
+      return;
+    }
+    try {
+      const { default: init } = await import('./skate3rust.js');
+      // `main` runs on init: it reads ahead what startup needs, then starts the game.
+      await init({ module_or_path: engine });
+    } catch (error) {
+      // winit hands control back to the browser's event loop by throwing; that is not a failure.
+      if (String(error).includes('Using exceptions for control flow')) return;
+      console.error(error);
+      globalThis.skatePage.stopped(`The engine could not start: ${error?.message ?? error}`);
+    }
+  }
+
+  let engine = null;
+  if (!navigator.gpu) {
+    fail('This browser has no WebGPU. Use a current Chrome or Edge, or a WebGPU-enabled Firefox or Safari.');
+  } else {
+    // Download the engine while the player chooses.
+    engine = fetch(new URL('skate3rust_bg.wasm', import.meta.url));
+    show('Choose your installation folder to play.');
+    actions.hidden = false;
+    help.hidden = false;
+    const input = document.getElementById('folder');
+    choose.onclick = () => start(() => chooseFolder(input, show));
+    const remembered = await rememberedFolder();
+    if (remembered) {
+      again.textContent = `Use “${remembered.name}” again`;
+      again.hidden = false;
+      again.onclick = () => start(() => fromHandle(remembered, show));
+    }
+  }
+</script>
+</body>
+</html>

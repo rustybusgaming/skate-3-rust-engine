@@ -1,5 +1,7 @@
 mod frame_timing;
 mod animation;
+// The crash supervisor is a second process; a browser tab has none.
+#[cfg(not(target_arch = "wasm32"))]
 mod crash_report;
 mod crash_context;
 mod multiplayer;
@@ -32,8 +34,11 @@ mod physics;
 mod skater_animation;
 mod verification;
 mod performance;
+// The Chrome trace goes to a file, which a browser tab cannot write; only `map_metadata` runs there.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 mod profiling;
 mod graphics_menu;
+mod graphics_quality;
 mod retail_menus;
 mod retail_menu_movies;
 mod modding;
@@ -60,8 +65,21 @@ mod game_audio;
 pub(crate) mod world_audio;
 pub(crate) mod ui_audio;
 mod trigger_volumes;
+#[cfg(target_arch = "wasm32")]
+mod web;
+
+/// The wall clock: `std::time` natively. In the browser `SystemTime::now` panics; `web-time` reads
+/// `Date.now()` instead.
+mod wall_clock {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) use std::time::{SystemTime, UNIX_EPOCH};
+    #[cfg(target_arch = "wasm32")]
+    pub(crate) use web_time::{SystemTime, UNIX_EPOCH};
+}
 
 fn main() -> bevy::app::AppExit {
+    // Process-level modes and services. A browser tab has none of them (`web`).
+    #[cfg(not(target_arch = "wasm32"))]
     match updater::recover() {
         Ok(true) => return bevy::app::AppExit::Success,
         Err(error) => { eprintln!("{error}"); return bevy::app::AppExit::Success; },
@@ -70,70 +88,66 @@ fn main() -> bevy::app::AppExit {
     // Setup tool mode: `--extract-ocean-pca <default.xex> <ocean-pca.json>`.
     // Before the crash supervisor, whose report window would block setup on
     // a failed (non-zero) extraction.
+    #[cfg(not(target_arch = "wasm32"))]
     if let Some(code) = extract_ocean_pca() { std::process::exit(code); }
     // Setup tool mode: `--extract-menu-tables <default.xex> <menu-tables.json>`.
+    #[cfg(not(target_arch = "wasm32"))]
     if let Some(code) = extract_menu_tables() { std::process::exit(code); }
+    #[cfg(not(target_arch = "wasm32"))]
     if let Some(code) = crash_report::entry() { std::process::exit(code); }
+    #[cfg(not(target_arch = "wasm32"))]
     let _trace = match profiling::init() {
         Ok(guard) => guard,
-        Err(error) => { eprintln!("{error}"); return bevy::app::AppExit::error(); }
+        Err(error) => return failed(error),
     };
+    #[cfg(target_arch = "wasm32")]
+    return web::start();
+    #[cfg(not(target_arch = "wasm32"))]
+    run()
+}
+
+/// Startup, then the game. The browser build calls it once the installation files startup reads
+/// are in memory, and again if a read wanted one that was not (`web`).
+pub(crate) fn run() -> bevy::app::AppExit {
     let _startup = bevy::log::info_span!("startup").entered();
     eprintln!("REPORT_META stage=configuration_and_installation");
     let config = match bevy::log::info_span!("load_configuration_and_map").in_scope(config::Config::from_env) {
         Ok(config) => config,
-        Err(error) => {
-            eprintln!("{error}");
-            return bevy::app::AppExit::error();
-        }
+        Err(error) => return failed(error),
     };
     profiling::map_metadata(&config);
     eprintln!("REPORT_META startup=map_fingerprint:{:016x} difficulty:{} multiplayer_requested:{} custom_appearance:{} renderer:Vulkan", config.map_fingerprint, config.difficulty.key(), config.multiplayer.host.is_some() || config.multiplayer.direct.is_some(), config.multiplayer.appearance.is_some());
     eprintln!("REPORT_META stage=gameplay_configuration");
     if let Err(error) = skate_data::input_config::StockGameplayConfig::load(&config.asset_root) {
-        eprintln!("{error}");
-        return bevy::app::AppExit::error();
+        return failed(error);
     }
     eprintln!("REPORT_META stage=asset_manifest");
     let manifest = match bevy::log::info_span!("load_manifest").in_scope(|| skate_data::GameAssets::load(&config.asset_root)) {
         Ok(manifest) => manifest,
-        Err(error) => {
-            eprintln!("{error}");
-            return bevy::app::AppExit::error();
-        }
+        Err(error) => return failed(error),
     };
     eprintln!("REPORT_META stage=stock_graphs");
     let graphs = match bevy::log::info_span!("load_graphs").in_scope(|| graph_runtime::StockGraphs::load(&config.asset_root, &manifest)) {
         Ok(graphs) => graphs,
-        Err(error) => {
-            eprintln!("{error}");
-            return bevy::app::AppExit::error();
-        }
+        Err(error) => return failed(error),
     };
     if config.validate_maps {
         return match map_validation::run(&config, &graphs) {
             Ok(()) => bevy::app::AppExit::Success,
-            Err(error) => {
-                eprintln!("{error}");
-                bevy::app::AppExit::error()
-            }
+            Err(error) => failed(error),
         };
     }
     eprintln!("REPORT_META stage=map_validation");
     if let Some(map) = &config.map {
         if let Err(error) = skate_world::validate_runtime(map) {
-            eprintln!("{error}");
-            return bevy::app::AppExit::error();
+            return failed(error);
         }
     }
     eprintln!("SKATE_DIFFICULTY mode={} native_index={}", config.difficulty.key(), config.difficulty as u32);
     eprintln!("REPORT_META stage=physics_initialization");
     let mut physics = match bevy::log::info_span!("load_physics").in_scope(|| physics::GamePhysics::load_with_difficulty(&config.asset_root, config.map.as_ref(), config.difficulty)) {
         Ok(physics) => physics,
-        Err(error) => {
-            eprintln!("{error}");
-            return bevy::app::AppExit::error();
-        }
+        Err(error) => return failed(error),
     };
     if config.multiplayer.spawn_offset != 0.0 {
         let mut spawn = physics.board.part_transforms()[skate_core::physics::board::BodyId::Deck.index()];
@@ -143,27 +157,20 @@ fn main() -> bevy::app::AppExit {
     eprintln!("REPORT_META stage=skater_initialization");
     let skater = match bevy::log::info_span!("load_skater").in_scope(|| physics::SkaterRuntime::load(&config.asset_root, &graphs, &physics, config.difficulty.profile_key())) {
         Ok(skater) => skater,
-        Err(error) => {
-            eprintln!("{error}");
-            return bevy::app::AppExit::error();
-        }
+        Err(error) => return failed(error),
     };
     eprintln!("REPORT_META stage=controls_initialization");
     let controls = match physics::PlayerControls::load(&config.asset_root) {
         Ok(controls) => controls,
-        Err(error) => { eprintln!("{error}"); return bevy::app::AppExit::error(); }
+        Err(error) => return failed(error),
     };
     if config.check_assets {
         if let Err(error) = camera::CameraRuntime::load(&config.asset_root) {
-            eprintln!("{error}");
-            return bevy::app::AppExit::error();
+            return failed(error);
         }
         match trigger_volumes::check(config.map_path.as_deref(), config.map.as_ref()) {
             Ok(count) => eprintln!("SKATE_TRIGGERS_READY volumes={count}"),
-            Err(error) => {
-                eprintln!("{error}");
-                return bevy::app::AppExit::error();
-            }
+            Err(error) => return failed(error),
         }
         eprintln!("SKATE_ASSETS_READY");
         return bevy::app::AppExit::Success;
@@ -176,12 +183,23 @@ fn main() -> bevy::app::AppExit {
     app.run()
 }
 
+/// A startup error: printed natively. In the browser it is shown on the page, unless reading
+/// ahead the file a read missed and starting again can fix it (`web::failed`).
+fn failed(error: impl std::fmt::Display) -> bevy::app::AppExit {
+    eprintln!("{error}");
+    #[cfg(target_arch = "wasm32")]
+    return web::failed(error.to_string());
+    #[cfg(not(target_arch = "wasm32"))]
+    bevy::app::AppExit::error()
+}
+
 #[cfg(test)]
 #[path = "tests/action_host.rs"]
 mod action_host_tests;
 
 /// Writes the retail water/ocean animation table for setup (see
 /// skate_data::ocean_pca). Runs before any game initialization.
+#[cfg(not(target_arch = "wasm32"))]
 fn extract_ocean_pca() -> Option<i32> {
     let mut args = std::env::args_os().skip(1);
     if args.next()? != "--extract-ocean-pca" {
@@ -209,6 +227,7 @@ fn extract_ocean_pca() -> Option<i32> {
 
 /// Writes the retail front-end menu tables for setup (see
 /// skate_data::menu_tables). Runs before any game initialization.
+#[cfg(not(target_arch = "wasm32"))]
 fn extract_menu_tables() -> Option<i32> {
     let mut args = std::env::args_os().skip(1);
     if args.next()? != "--extract-menu-tables" {

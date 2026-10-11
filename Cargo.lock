@@ -4863,6 +4863,8 @@ dependencies = [
  "serde",
  "serde_json",
  "skate-core",
+ "skate-fs",
+ "web-time",
  "zstd",
 ]
 
@@ -4876,6 +4878,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "skate-fs"
+version = "0.1.0"
+dependencies = [
+ "js-sys",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
 name = "skate-game"
 version = "0.1.0"
 dependencies = [
@@ -4884,6 +4895,7 @@ dependencies = [
  "gltf",
  "half",
  "image",
+ "js-sys",
  "naga",
  "naga_oil",
  "sdl3",
@@ -4893,8 +4905,12 @@ dependencies = [
  "skate-core",
  "skate-data",
  "skate-dynamics",
+ "skate-fs",
  "skate-mods",
  "skate-net",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-time",
  "wgpu",
 ]
 
@@ -4909,6 +4925,7 @@ dependencies = [
  "serde_json",
  "skate-audio",
  "skate-dynamics",
+ "web-time",
  "zip",
 ]
 
@@ -4922,6 +4939,7 @@ dependencies = [
  "serde_json",
  "skate-core",
  "socket2",
+ "web-time",
 ]
 
 [[package]]
@@ -4930,6 +4948,19 @@ version = "0.1.0"
 dependencies = [
  "skate-net",
  "steamworks",
+]
+
+[[package]]
+name = "skate-wasm-parity"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "skate-audio",
+ "skate-audio-fma",
+ "skate-core",
+ "skate-data",
+ "wasm-bindgen",
+ "zstd",
 ]
 
 [[package]]
@@ -5760,6 +5791,7 @@ dependencies = [
  "smallvec",
  "static_assertions",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
  "wgpu-core",
  "wgpu-hal",

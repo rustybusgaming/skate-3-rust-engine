@@ -203,7 +203,7 @@ pub(crate) struct RetailVolumeOverrides {
 impl AudioSettings {
     fn load(config: &crate::config::Config) -> Self {
         let path = config.asset_root.parent().unwrap_or(&config.asset_root).join("settings/audio.json");
-        let saved = match std::fs::read(&path) {
+        let saved = match skate_fs::read(&path) {
             Ok(bytes) => serde_json::from_slice::<SavedSettings>(&bytes).unwrap_or_else(|e| {
                 warn!("Audio settings: {e}");
                 SavedSettings::default()
@@ -249,8 +249,8 @@ impl AudioSettings {
     }
     fn save(&self) -> String {
         let save = (|| -> Result<(), String> {
-            std::fs::create_dir_all(self.path.parent().unwrap()).map_err(|e| e.to_string())?;
-            std::fs::write(&self.path, serde_json::to_vec_pretty(&self.saved).map_err(|e| e.to_string())?)
+            skate_fs::create_dir_all(self.path.parent().unwrap()).map_err(|e| e.to_string())?;
+            skate_fs::write(&self.path, serde_json::to_vec_pretty(&self.saved).map_err(|e| e.to_string())?)
                 .map_err(|e| e.to_string())
         })();
         match save {
@@ -372,6 +372,12 @@ impl Plugin for GameAudioPlugin {
 fn setup(mut commands: Commands, config: Res<crate::config::Config>) {
     commands.insert_resource(AudioSettings::load(&config));
     commands.spawn((GameAudioListener, SpatialListener::new(0.2), Transform::default()));
+    // The browser build has no game audio yet: its banks would stream from the player's disk,
+    // and play through Web Audio (web port milestone 6). Without a library the game runs silent.
+    if cfg!(target_arch = "wasm32") {
+        info!("Game audio is not in the browser build yet");
+        return;
+    }
     match Library::load(&config.asset_root) {
         Ok(library) => commands.insert_resource(library),
         Err(error) => info!("Game audio unavailable (run setup to extract it): {error}"),
@@ -597,6 +603,6 @@ mod tests {
         assert_eq!(s.saved.master, 100);
         s.muted = true;
         assert_eq!(s.master(), 0.0);
-        let _ = std::fs::remove_dir_all(s.path.parent().unwrap());
+        let _ = skate_fs::remove_dir_all(s.path.parent().unwrap());
     }
 }

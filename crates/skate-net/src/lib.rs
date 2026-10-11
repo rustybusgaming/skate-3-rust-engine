@@ -1,9 +1,14 @@
 //! Transport-neutral, bounded snapshot protocol. No platform identity or SDK types.
 use serde::{Deserialize, Serialize};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
 mod codec;
 pub mod lobby;
 pub mod blob;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod socket;
 pub mod directory;
 pub mod packed;

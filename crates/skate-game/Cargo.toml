@@ -26,6 +26,7 @@ dev-dynamic = ["bevy/dynamic_linking"]
 bevy = { workspace = true, features = ["jpeg", "trace", "debug", "bevy_audio", "wav"] }
 skate-core.workspace = true
 skate-data.workspace = true
+skate-fs.workspace = true
 half = "=2.7.1"
 serde_json.workspace = true
 serde.workspace = true
@@ -36,8 +37,21 @@ skate-mods = { path = "../skate-mods" }
 skate-dynamics = { path = "../skate-dynamics" }
 skate-audio = { path = "../skate-audio" }
 gltf = { version = "=1.4.1", default-features = true }
-# SDL3 gamepad input for every platform, built from source and statically linked.
+
+# SDL3 gamepad input for every native platform, built from source and statically linked. The
+# browser has no SDL; its pads come through the Gamepad API instead.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 sdl3 = { version = "=0.20.0", features = ["build-from-source-static"] }
+
+# The browser build renders through WebGPU, not Bevy's default WebGL2 (docs/web-port). It reads
+# the player's installation through the page (`web.rs`), and the wall clock through `Date.now()`:
+# `SystemTime::now` panics on wasm32-unknown-unknown.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+bevy = { workspace = true, features = ["webgpu"] }
+js-sys = "=0.3.104"
+wasm-bindgen = "=0.2.127"
+wasm-bindgen-futures = "=0.4.77"
+web-time = "=1.1.0"
 
 [dev-dependencies]
 naga = { version = "=27.0.3", features = ["wgsl-in"] }

@@ -76,7 +76,7 @@ pub(crate) struct XinputIdentity {
 /// Refresh periodically as well as after errors, so hot swaps cannot leave a
 /// subtype cached indefinitely even if Windows never exposes a disconnect.
 pub(crate) struct CapabilityCache<T = XinputIdentity> {
-    value: Option<(T, std::time::Instant)>,
+    value: Option<(T, bevy::platform::time::Instant)>,
 }
 impl<T> Default for CapabilityCache<T> {
     fn default() -> Self {
@@ -90,7 +90,7 @@ impl<T: Clone> CapabilityCache<T> {
     #[cfg_attr(not(windows), allow(dead_code))]
     fn get(
         &mut self,
-        now: std::time::Instant,
+        now: bevy::platform::time::Instant,
         read: impl FnOnce() -> Result<T, DeviceError>,
     ) -> Result<T, DeviceError> {
         if let Some((subtype, expires)) = &self.value {
@@ -228,7 +228,7 @@ mod windows {
         if result != 0 {
             return Err(DeviceError::State(result));
         }
-        let identity = cache.get(std::time::Instant::now(), || {
+        let identity = cache.get(bevy::platform::time::Instant::now(), || {
             let mut capabilities = MaybeUninit::<Capabilities>::uninit();
             // SAFETY: writable storage with the SDK ABI; read only on success.
             let result = unsafe { XInputGetCapabilities(index, 1, capabilities.as_mut_ptr()) };
@@ -292,6 +292,7 @@ pub(crate) fn xinput_identity(index: u32) -> Option<ControllerKind> {
     windows::identity(index)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 mod sdl {
     use super::*;
     use crate::input::controller_kind;
@@ -474,6 +475,7 @@ mod sdl {
 }
 
 enum Backend {
+    #[cfg(not(target_arch = "wasm32"))]
     Sdl(&'static sdl::Shared),
     #[cfg(windows)]
     XInput,
@@ -489,20 +491,32 @@ fn backend() -> &'static Backend {
             bevy::log::info!("Controller input: XInput (SKATE3_INPUT=xinput)");
             return Backend::XInput;
         }
-        match sdl::start() {
-            Ok(shared) => Backend::Sdl(shared),
-            #[cfg(windows)]
-            Err(error) => {
-                bevy::log::warn!("SDL gamepad input unavailable ({error}); using XInput");
-                Backend::XInput
-            }
-            #[cfg(not(windows))]
-            Err(error) => {
-                bevy::log::error!("SDL gamepad input unavailable: {error}");
-                Backend::Unavailable
-            }
-        }
+        start_sdl()
     })
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn start_sdl() -> Backend {
+    match sdl::start() {
+        Ok(shared) => Backend::Sdl(shared),
+        #[cfg(windows)]
+        Err(error) => {
+            bevy::log::warn!("SDL gamepad input unavailable ({error}); using XInput");
+            Backend::XInput
+        }
+        #[cfg(not(windows))]
+        Err(error) => {
+            bevy::log::error!("SDL gamepad input unavailable: {error}");
+            Backend::Unavailable
+        }
+    }
+}
+
+/// The browser has no SDL. Its pads arrive through the Gamepad API (web port milestone 6).
+#[cfg(target_arch = "wasm32")]
+fn start_sdl() -> Backend {
+    bevy::log::warn!("Controller input is not available in the browser build yet");
+    Backend::Unavailable
 }
 
 pub(crate) fn poll_cached(
@@ -511,6 +525,7 @@ pub(crate) fn poll_cached(
 ) -> Result<DevicePacket, DeviceError> {
     assert!(index < 4);
     match backend() {
+        #[cfg(not(target_arch = "wasm32"))]
         Backend::Sdl(shared) => {
             let _ = cache;
             sdl::poll(shared, index)
@@ -565,7 +580,7 @@ mod cache_tests {
     use super::*;
     #[test]
     fn capability_cache_refreshes_and_never_caches_errors() {
-        let start = std::time::Instant::now();
+        let start = bevy::platform::time::Instant::now();
         let mut cache = CapabilityCache::<u8>::default();
         assert_eq!(cache.get(start, || Ok(1)), Ok(1));
         assert_eq!(

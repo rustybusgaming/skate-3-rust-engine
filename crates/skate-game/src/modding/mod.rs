@@ -24,10 +24,9 @@ pub(crate) mod player_physics;
 
 pub(crate) use menu::ModMenu;
 
-use bevy::{
-    asset::io::{AssetSourceBuilder, file::FileAssetReader},
-    prelude::*,
-};
+#[cfg(not(target_arch = "wasm32"))]
+use bevy::asset::io::{AssetSourceBuilder, file::FileAssetReader};
+use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use skate_dynamics::{
@@ -50,7 +49,7 @@ pub(crate) struct Mods {
     canvases: BTreeMap<(String, String), canvas::Canvas>,
     attach: Option<AttachState>,
     detach_error: Option<String>,
-    detach_pending: Option<(Transform,std::time::Instant)>,
+    detach_pending: Option<(Transform,bevy::platform::time::Instant)>,
     camera: CameraOverride,
     suspended_by: BTreeSet<String>,
     hidden_players: BTreeMap<Entity, Visibility>,
@@ -145,7 +144,7 @@ pub(crate) struct ModdingPlugin;
 impl Plugin for ModdingPlugin {
     fn build(&self, app: &mut App) {
         let root = package_root();
-        if let Err(e) = std::fs::create_dir_all(&root) {
+        if let Err(e) = skate_fs::create_dir_all(&root) {
             warn!("Cannot create mods folder {}: {e}", root.display());
         }
         info!("Mod packages folder: {}", root.display());
@@ -206,6 +205,7 @@ impl Plugin for ModdingPlugin {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn register_source(app: &mut App) {
     let root = package_root();
     app.register_asset_source(
@@ -213,6 +213,10 @@ pub(crate) fn register_source(app: &mut App) {
         AssetSourceBuilder::new(move || Box::new(FileAssetReader::new(root.clone()))),
     );
 }
+
+/// The browser build has no Lua, so no mod packages (`skate_mods::Vm`).
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn register_source(_: &mut App) {}
 
 pub(crate) fn package_root() -> std::path::PathBuf {
     std::env::var_os("SKATE3_MODS")
@@ -1394,10 +1398,10 @@ fn apply_one(
             let root = package.root.canonicalize().map_err(|e| e.to_string())?;
             let full = root.join(&path).canonicalize().map_err(|e| e.to_string())?;
             if !full.starts_with(&root) { return Err("menu movie escapes its package".into()); }
-            if std::fs::metadata(&full).map_err(|e| e.to_string())?.len() > crate::retail_menu_movies::MAX_MOD_MOVIE_BYTES {
+            if skate_fs::metadata(&full).map_err(|e| e.to_string())?.len() > crate::retail_menu_movies::MAX_MOD_MOVIE_BYTES {
                 return Err("menu movie file is too large".into());
             }
-            let json = serde_json::from_slice(&std::fs::read(&full).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+            let json = serde_json::from_slice(&skate_fs::read(&full).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
             let mut movies = world.get_resource_mut::<crate::retail_menu_movies::RetailMenuMovies>().ok_or("menu movies are not ready")?;
             movies.set_mod_movie(id, &name, json)?;
         }

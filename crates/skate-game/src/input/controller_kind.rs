@@ -206,6 +206,7 @@ pub(crate) fn model(user: &[Model], vendor: u16, product: u16) -> Option<Model> 
 }
 
 /// SDL_GamepadType → family. The model table refines Xbox One pads into Elite.
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn family_from_sdl(kind: sdl3::gamepad::GamepadType) -> Family {
     use sdl3::gamepad::GamepadType as T;
     match kind {
@@ -239,6 +240,7 @@ pub(crate) fn family_from_xinput_subtype(subtype: u8) -> Family {
 }
 
 /// What an SDL gamepad reports when it is opened.
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) struct SdlReport {
     pub name: String,
     pub gamepad_type: sdl3::gamepad::GamepadType,
@@ -250,6 +252,7 @@ pub(crate) struct SdlReport {
     pub misc_button: bool,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn from_sdl(report: SdlReport, user: &[Model]) -> ControllerKind {
     let mut family = family_from_sdl(report.gamepad_type);
     let model = report.vendor_id.zip(report.product_id).and_then(|(v, p)| model(user, v, p));
