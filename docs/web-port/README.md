@@ -29,9 +29,9 @@ alike). Each milestone is finished, verified, committed and reported before the 
 | 1 | Engine-independent crates build for wasm32; prove bit parity with native and measure `mul_add` | **Done** ([determinism.md](determinism.md)) |
 | G1 | Optional graphics quality: supersampling, edge-adaptive upscaling (FSR 1), CAS sharpening, FXAA/SMAA, anisotropic filtering; defaults unchanged | **Done** ([../graphics/quality-settings.md](../graphics/quality-settings.md)) |
 | 2 | `skate-game` compiles for wasm32 (WebGPU backend, canvas window, browser logging; Windows and process-level modules, SDL3 and file asset sources gated) | **Done** ([browser-build.md](browser-build.md)) |
-| G2 | HD texture pack loader: replacement textures by name from a folder the player fills (nothing EA-derived shipped) | Next |
+| G2 | HD texture pack loader: replacement textures by name from a folder the player fills (nothing EA-derived shipped) | **Done** ([../graphics/texture-packs.md](../graphics/texture-packs.md)) |
 | 3 | Browser installation: the player chooses their own converted installation, read from their disk as the engine needs it; startup, maps and the asset server run from it | **Done** ([installation.md](installation.md)) |
-| 4 | `skate-web-server`: serves the wasm build and loader page (source link, MIME, caching), opt-in localhost operator asset mount with token | Proposed |
+| 4 | `skate-web-server`: serves the wasm build and loader page (source link, MIME, caching), opt-in localhost operator asset mount with token | Next |
 | 5 | Multiplayer through the server: lobby directory and a WebSocket relay for `skate-net` snapshots | Proposed |
 | 6 | Browser input and audio (Gamepad API in the XInput shape the game expects, Web Audio output for `skate-audio`), performance pass | **Done** ([input-audio.md](input-audio.md)) |
 

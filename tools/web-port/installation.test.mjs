@@ -35,6 +35,22 @@ test('finds the installation from the package folder, its data folder or itself'
   }
 });
 
+test('texture packs beside the package are mounted with it', async () => {
+  const files = {
+    ...installation(`data/installations/${ID}/`),
+    'texture-packs/HD/DownTown/brick.png': 'png',
+    'texture-packs/HD/assets/private/skin.png': 'png',
+  };
+  const found = await mount(folder('package', files), () => {});
+  assert.equal(found.packs, true);
+  const mounted = new Map(globalThis.skateInstallation.files());
+  assert.equal(mounted.get('texture-packs/HD/DownTown/brick.png'), 3);
+  assert.ok(mounted.has('texture-packs/HD/assets/private/skin.png'));
+  // From the data folder the packs are out of reach.
+  const fromData = Object.fromEntries(Object.entries(files).map(([path, text]) => [path.replace(/^data\//, ''), text]));
+  assert.equal((await mount(folder('data', fromData), () => {})).packs, false);
+});
+
 test('the marker picks between installations', async () => {
   const files = {
     'data/installation.json': JSON.stringify({ version: 1, directory: `installations/${OTHER}` }),

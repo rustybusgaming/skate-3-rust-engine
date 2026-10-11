@@ -53,6 +53,8 @@ struct GraphicsSettings {
     /// Upscaling, sharpening, anti-aliasing and texture filtering; flat in the file.
     #[serde(flatten)]
     quality: crate::graphics_quality::Quality,
+    /// The HD texture pack, a folder in `texture-packs` (`texture_pack`); none by default.
+    texture_pack: Option<String>,
 }
 impl Default for GraphicsSettings {
     fn default() -> Self {
@@ -67,6 +69,7 @@ impl Default for GraphicsSettings {
             frame_stats: false,
             frame_stats_simple: false,
             quality: crate::graphics_quality::Quality::default(),
+            texture_pack: None,
         }
     }
 }
@@ -85,6 +88,7 @@ impl GraphicsSettings {
             self.fps = 0;
         }
         self.quality = self.quality.validated();
+        self.texture_pack = self.texture_pack.filter(|name| crate::texture_pack::valid_name(name));
         self
     }
     fn internal_size(&self, window: UVec2) -> UVec2 {
@@ -357,8 +361,9 @@ fn setup(
 }
 /// GRAPHICS-section rows for the game_audio volume settings.
 const FRAME_STATS_ROW: usize = 28;
-/// GRAPHICS-section rows for `graphics_quality::Quality`.
-const QUALITY_ROWS: std::ops::Range<usize> = 29..33;
+/// GRAPHICS-section rows for `graphics_quality::Quality`, then the texture pack.
+const QUALITY_ROWS: std::ops::Range<usize> = 29..34;
+const TEXTURE_PACK_ROW: usize = 33;
 fn quality_row(row: usize) -> Option<crate::graphics_quality::Row> {
     use crate::graphics_quality::Row;
     match row { 29 => Some(Row::Upscaler), 30 => Some(Row::Sharpening), 31 => Some(Row::AntiAliasing), 32 => Some(Row::Anisotropy), _ => None }
@@ -652,6 +657,13 @@ pub(crate) fn interact(
                     let now = if s.frame_stats { (true, s.frame_stats_simple) } else { (false, false) };
                     (s.frame_stats, s.frame_stats_simple) = cycle(&modes, now, direction);
                 }
+                TEXTURE_PACK_ROW => {
+                    // Off, then each pack folder; packs added while the game runs appear here too.
+                    let options: Vec<Option<String>> = std::iter::once(None).chain(crate::texture_pack::available().into_iter().map(Some)).collect();
+                    let s = &mut menu.settings;
+                    let index = options.iter().position(|option| *option == s.texture_pack).unwrap_or(0) as i32;
+                    s.texture_pack = options[(index + direction).rem_euclid(options.len() as i32) as usize].clone();
+                }
                 row if QUALITY_ROWS.contains(&row) => {
                     if let Some(quality) = quality_row(row) { quality.adjust(&mut menu.settings.quality, direction); }
                 }
@@ -898,6 +910,7 @@ fn labels(
                 14 => "Mods".into(),
                 16..=18 => audio.as_ref().map(|a| a.label(audio_row(label.0))).unwrap_or_default(),
                 19 => controller_label(&debug.3),
+                TEXTURE_PACK_ROW => format!("Texture pack          {}", s.texture_pack.as_deref().unwrap_or("Off")),
                 row if QUALITY_ROWS.contains(&row) => quality_row(row).map(|q| q.label(&s.quality, s.scale)).unwrap_or_default(),
                 FRAME_STATS_ROW => format!("Frame-time counter    {}", if !s.frame_stats { "Off" } else if s.frame_stats_simple { "Simple" } else { "Verbose" }),
                 _ => "Multiplayer".into(),
@@ -925,6 +938,9 @@ fn labels(
             if menu.custom_dirty {"Changes pending - select Apply custom tuning below. Left/Right adjusts; drag bars with the mouse."} else {"Left/Right adjusts; drag bars with the mouse. Custom starts from Easy."})
     } else if let Some(row) = quality_row(menu.selected).filter(|_| menu.section == 2 && !menu.daylight) {
         if menu.status.is_empty() { row.description().into() } else { format!("{}\n{}", row.description(), menu.status) }
+    } else if menu.selected == TEXTURE_PACK_ROW && menu.section == 2 && !menu.daylight {
+        let about = "HD replacement textures from a folder in texture-packs beside the game. World textures change the next time a map loads; character textures at the next start.";
+        if menu.status.is_empty() { about.into() } else { format!("{about}\n{}", menu.status) }
     } else {
         menu.status.clone()
     };
@@ -1136,9 +1152,22 @@ mod tests {
         assert!(!SECTIONS.iter().any(|(name,_)| matches!(*name,"SESSION"|"WORLD")));
         menu.select_section(2);
         assert!(!menu.multiplayer && !menu.browser);
-        assert_eq!(menu.rows(), vec![0,1,2,13,16,17,18,FRAME_STATS_ROW,29,30,31,32]);
+        assert_eq!(menu.rows(), vec![0,1,2,13,16,17,18,FRAME_STATS_ROW,29,30,31,32,TEXTURE_PACK_ROW]);
         menu.daylight = true;
         assert_eq!(menu.rows(), vec![0,1,2,3]);
+    }
+    #[test]
+    fn texture_pack_setting_defaults_off_round_trips_and_refuses_paths() {
+        assert_eq!(GraphicsSettings::default().texture_pack, None);
+        let old: GraphicsSettings = serde_json::from_str(r#"{"width":1920,"height":1080,"scale":100,"fps":0}"#).unwrap();
+        assert_eq!(old.validated().texture_pack, None);
+        let chosen = GraphicsSettings { texture_pack: Some("HD World".into()), ..default() };
+        let text = serde_json::to_string(&chosen).unwrap();
+        assert!(text.contains(r#""texture_pack":"HD World""#), "{text}");
+        assert_eq!(serde_json::from_str::<GraphicsSettings>(&text).unwrap().validated(), chosen);
+        for bad in [r#"{"texture_pack":"../escape"}"#, r#"{"texture_pack":"a/b"}"#, r#"{"texture_pack":""}"#] {
+            assert_eq!(serde_json::from_str::<GraphicsSettings>(bad).unwrap().validated().texture_pack, None, "{bad}");
+        }
     }
     #[test]
     fn frame_counter_setting_defaults_off_and_round_trips() {

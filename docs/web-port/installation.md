@@ -37,7 +37,9 @@ On the next visit, Chrome and Edge offer **Use “<folder>” again**, which ask
 folder without picking it.
 
 Pads come through the Gamepad API (press a button on yours once the page is open), and audio
-through Web Audio: see [input-audio.md](input-audio.md).
+through Web Audio: see [input-audio.md](input-audio.md). Texture packs come with the package
+folder's `texture-packs` when you choose the package folder
+([../graphics/texture-packs.md](../graphics/texture-packs.md)).
 
 The automated check, `node tools/web-port/smoke.mjs`, cannot use real game data, so it uses a
 synthetic installation instead (below).

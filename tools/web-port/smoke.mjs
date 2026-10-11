@@ -10,6 +10,8 @@
 //              demo map, parsed and fingerprinted), then stops at the placeholder input.cfg, which
 //              is as far as anything but a real converted installation goes. One read-ahead file
 //              is withheld on purpose, so startup must notice the miss, read it and start again.
+//              The package also holds a texture pack, chosen in its graphics settings, that
+//              replaces the demo map's checker texture: read on a retry once the map is parsed.
 //              Two fake pads are plugged in: one in the standard layout, which the stop screen's
 //              controller list must pick up through the Gamepad API, and one without it. Then the
 //              main thread stalls for 400 ms, and the audio output (Bevy → cpal → Web Audio) must
@@ -23,6 +25,7 @@
 //
 // Needs Playwright with its Chromium (resolved through NODE_PATH, like a global install).
 import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { crc32, deflateSync } from 'node:zlib';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { dirname, extname, join, normalize, resolve } from 'node:path';
@@ -34,6 +37,29 @@ const { chromium } = createRequire(import.meta.url)('playwright');
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.wasm': 'application/wasm' };
 
 const ID = '0123456789abcdef0123456789abcdef';
+
+/** A solid RGBA PNG, `side` pixels square. */
+function png(side, rgba) {
+  const chunk = (type, data) => {
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const out = Buffer.alloc(body.length + 8);
+    out.writeUInt32BE(data.length, 0);
+    body.copy(out, 4);
+    out.writeUInt32BE(crc32(body), body.length + 4);
+    return out;
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(side, 0);
+  header.writeUInt32BE(side, 4);
+  header.set([8, 6, 0, 0, 0], 8);
+  const row = Buffer.concat([Buffer.from([0]), ...Array.from({ length: side }, () => Buffer.from(rgba))]);
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', header),
+    chunk('IDAT', deflateSync(Buffer.concat(Array.from({ length: side }, () => row)))),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
 const INPUT_CFG = 'assets/private/stock/data/config/input.cfg';
 
 /** The native package layout: package/data/installation.json → data/installations/<id>. */
@@ -59,6 +85,9 @@ async function synthetic() {
   }
   await put(`data/installations/${ID}/${INPUT_CFG}`, '// Synthetic placeholder: not a gameplay configuration.\n');
   await put(`data/installations/${ID}/settings/default-map.json`, JSON.stringify('maps/format-demo.skate'));
+  // A pack beside the game replacing the demo map's 2x2 checker at four times the size.
+  await put(`data/installations/${ID}/settings/graphics.json`, JSON.stringify({ texture_pack: 'HD' }));
+  await put('texture-packs/HD/format-demo/Albedo checker.png', png(8, [200, 40, 40, 255]));
   await mkdir(join(inst, 'maps'), { recursive: true });
   await copyFile(join(repository, 'maps/format-demo.skate'), join(inst, 'maps/format-demo.skate'));
   const other = join(work, 'synthetic-not-ours');
@@ -203,6 +232,8 @@ const lines = await run('synthetic', {
     if (!stop.includes('Input configuration') || !stop.includes('input.cfg')) return `stopped somewhere else: ${stop}`;
     if (!message.includes('Input configuration')) return `the page does not show the stop: ${message}`;
     if (!seen(lines, 'SKATE_WEB_READ_AHEAD attempt=1 files=1')) return 'the withheld file was not read on a retry';
+    if (!seen(lines, 'SKATE_WEB_READ_AHEAD /installation/texture-packs/HD/format-demo/Albedo checker.png')) return 'the texture pack file was not read';
+    if (!seen(lines, 'TEXTURE_PACK HD: replaced 1 of 2 textures in format-demo')) return 'the texture pack did not replace the checker';
     if (!seen(lines, 'Controller 0: gamepad "Xbox 360 Controller')) return 'the standard pad did not reach controller slot 0';
     if (!seen(lines, 'Gamepad "Unmapped Pad": the browser does not map it')) return 'the unmapped pad was not reported';
     if (seen(lines, 'Controller 1: gamepad')) return 'the unmapped pad took a slot';
@@ -224,7 +255,7 @@ const lines = await run('synthetic', {
     return null;
   },
 });
-for (const tag of ['SKATE_WEB_READ_AHEAD', 'Controller 0:', 'SKATE_WEB_READY', 'SKATE_WEB_STOPPED']) {
+for (const tag of ['SKATE_WEB_READ_AHEAD', 'TEXTURE_PACK', 'Controller 0:', 'SKATE_WEB_READY', 'SKATE_WEB_STOPPED']) {
   for (const line of lines.filter((l) => l.includes(tag))) console.log(`  ${line.slice(0, 200)}`);
 }
 

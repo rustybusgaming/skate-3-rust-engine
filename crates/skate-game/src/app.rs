@@ -86,6 +86,8 @@ pub(crate) fn build(
     let mut app = App::new();
     crate::custom_models::register_source(&mut app);
     crate::modding::register_source(&mut app);
+    #[cfg(not(target_arch = "wasm32"))]
+    crate::texture_pack::register_assets(&mut app, &config.asset_root);
     #[cfg(target_arch = "wasm32")]
     crate::web::register_installation_source(&mut app, &config.asset_root);
     app.add_plugins(

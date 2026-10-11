@@ -133,6 +133,15 @@ export async function mount({ name, entries }, progress) {
   }
   // An installation is named by its folder (data/installations/<id>), or by the folder chosen.
   const id = root.split('/').pop() || name || 'installation';
+  // Texture packs live beside the game, in the package folder's texture-packs
+  // (docs/graphics/texture-packs.md): mounted beside the installation when the package was chosen.
+  const tail = `data/installations/${id}`;
+  if (root === tail || root.endsWith(`/${tail}`)) {
+    const packs = `${root.slice(0, root.length - tail.length)}texture-packs/`;
+    for (const [path, entry] of byPath) {
+      if (path.startsWith(packs)) files.set(`texture-packs/${path.slice(packs.length)}`, entry);
+    }
+  }
 
   const sizes = new Map([...files].map(([path, file]) => [path, file.size]));
   const cache = new Map();
@@ -193,7 +202,7 @@ export async function mount({ name, entries }, progress) {
       stored(db, 'saved', 'readwrite', (saved) => saved.delete(key));
     },
   };
-  return { id, files: files.size };
+  return { id, files: files.size, packs: [...files.keys()].some((path) => path.startsWith('texture-packs/')) };
 }
 
 function mb(bytes) {

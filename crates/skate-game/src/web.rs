@@ -51,6 +51,11 @@ extern "C" {
     fn page_stopped(message: &str) -> Result<(), JsValue>;
 }
 
+/// A line in the browser console, also before Bevy's logger exists (startup's map load).
+pub(crate) fn console(text: &str) {
+    console_log(text);
+}
+
 fn status(text: &str) {
     console_log(&format!("SKATE_WEB_STATUS {text}"));
     let _ = page_status(text);
@@ -235,7 +240,7 @@ pub(crate) fn took(path: &Path) {
 
 /// Work the native build runs on a thread. The browser has none: the job reads its files ahead,
 /// then runs on the main thread between frames.
-pub(crate) struct Job<T>(Arc<Mutex<Option<T>>>);
+pub(crate) struct Job<T>(Arc<Mutex<Option<(T, Vec<PathBuf>)>>>);
 
 impl<T: 'static> Job<T> {
     pub(crate) fn spawn(files: Vec<PathBuf>, work: impl FnOnce() -> T + 'static) -> Self {
@@ -246,7 +251,10 @@ impl<T: 'static> Job<T> {
             if let Err(error) = skate_fs::prefetch(&files).await {
                 warn!("{error}");
             }
-            *done.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(work());
+            // What the work itself wanted and was not read ahead, for a retry.
+            let _ = skate_fs::take_misses();
+            let value = work();
+            *done.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some((value, skate_fs::take_misses()));
         });
         Self(slot)
     }
@@ -255,10 +263,15 @@ impl<T: 'static> Job<T> {
         self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).is_some()
     }
 
+    /// Files the finished work wanted that were not read ahead.
+    pub(crate) fn missed(&self) -> Vec<PathBuf> {
+        self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).as_ref().map(|(_, missed)| missed.clone()).unwrap_or_default()
+    }
+
     /// The result, once [`Job::is_finished`].
     pub(crate) fn join(self) -> std::thread::Result<T> {
         let result = self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).take();
-        result.ok_or_else(|| Box::new("joined an unfinished job") as Box<dyn std::any::Any + Send>)
+        result.map(|(value, _)| value).ok_or_else(|| Box::new("joined an unfinished job") as Box<dyn std::any::Any + Send>)
     }
 }
 
@@ -292,12 +305,19 @@ impl AssetReader for InstallationReader {
 }
 
 /// Before `DefaultPlugins`: serves the default asset source from the installation, in place of
-/// Bevy's HTTP reader.
+/// Bevy's HTTP reader, with the chosen texture pack's images over it (`texture_pack`).
 pub(crate) fn register_installation_source(app: &mut App, assets: &Path) {
     let assets = assets.to_owned();
+    let pack = crate::texture_pack::asset_overlay(&assets);
     app.register_asset_source(
         AssetSourceId::Default,
-        AssetSourceBuilder::new(move || Box::new(InstallationReader(assets.clone()))),
+        AssetSourceBuilder::new(move || match &pack {
+            Some(pack) => Box::new(crate::texture_pack::Overlay {
+                pack: Box::new(InstallationReader(pack.clone())),
+                base: Box::new(InstallationReader(assets.clone())),
+            }),
+            None => Box::new(InstallationReader(assets.clone())),
+        }),
     );
 }
 
