@@ -1,0 +1,12 @@
+[package]
+name = "skate-fs"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+# A browser tab has no file system: there the player's installation, read by the loader page, is
+# served from memory (docs/web-port/installation.md). WASI has one, and gets `std::fs`.
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+js-sys = "=0.3.104"
+wasm-bindgen = "=0.2.127"
+wasm-bindgen-futures = "=0.4.77"

@@ -12,9 +12,10 @@ use bevy::{
     window::{MonitorSelection, PresentMode, PrimaryWindow, WindowMode},
 };
 use serde::{Deserialize, Serialize};
+use bevy::platform::time::Instant;
 use std::{
     path::PathBuf,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 const RESOLUTIONS: &[(u32, u32)] = &[
@@ -252,7 +253,7 @@ fn setup(
     mut time: ResMut<Time<Virtual>>,
 ) {
     let path = crate::graphics_quality::settings_path(&config.asset_root);
-    let settings = match std::fs::read(&path) {
+    let settings = match skate_fs::read(&path) {
         Ok(bytes) => serde_json::from_slice::<GraphicsSettings>(&bytes).unwrap_or_else(|e| {
             warn!("Graphics settings: {e}");
             GraphicsSettings::default()
@@ -659,8 +660,8 @@ pub(crate) fn interact(
         }
         if ((row < 3 || row == FRAME_STATS_ROW || QUALITY_ROWS.contains(&row)) && !menu.multiplayer && !menu.daylight && !day_action) || (day_action && row < 3) {
             let save = (|| -> Result<(), String> {
-                std::fs::create_dir_all(menu.path.parent().unwrap()).map_err(|e| e.to_string())?;
-                std::fs::write(
+                skate_fs::create_dir_all(menu.path.parent().unwrap()).map_err(|e| e.to_string())?;
+                skate_fs::write(
                     &menu.path,
                     serde_json::to_vec_pretty(&menu.settings).map_err(|e| e.to_string())?,
                 )
@@ -1023,7 +1024,8 @@ fn pace(menu: Option<Res<Menu>>, mut pacer: ResMut<FramePacer>) {
     let Some(menu) = menu else {
         return;
     };
-    if menu.settings.fps > 0 {
+    // A browser paces frames to the display itself, and its main thread cannot sleep.
+    if menu.settings.fps > 0 && !cfg!(target_arch = "wasm32") {
         let period = Duration::from_secs_f64(1. / f64::from(menu.settings.fps));
         if let Some(wait) = period.checked_sub(pacer.0.elapsed()) {
             std::thread::sleep(wait);

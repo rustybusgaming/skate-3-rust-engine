@@ -17,12 +17,12 @@ use crate::{
     skater_animation::AnimationSource,
 };
 use skate_data::skate_map::SkateMap;
+use bevy::platform::time::Instant;
 use std::{
     io::{BufRead, Write},
     panic::{catch_unwind, AssertUnwindSafe},
     path::Path,
     sync::Arc,
-    time::Instant,
 };
 
 pub(crate) const TEST_WORLD: &str = "TEST_WORLD";

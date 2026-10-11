@@ -360,7 +360,7 @@ impl StoredBlock<'_> {
 impl SkateMap {
     pub fn load(path: &Path) -> Result<Self, String> {
         let started = Instant::now();
-        let data = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let data = skate_fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
         let disk = started.elapsed();
         let parse_started = Instant::now();
         let map = Self::parse(&data).map_err(|e| format!("{}: {e}", path.display()))?;

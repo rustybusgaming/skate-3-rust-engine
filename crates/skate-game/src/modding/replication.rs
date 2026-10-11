@@ -8,7 +8,9 @@ use super::{Mods,graphics};
 use bevy::prelude::*;
 use serde::{Deserialize,Serialize};
 use skate_mods::scene::{GraphicsDefinition,NodeState,TransformState,valid_quaternion,valid_vector};
-use std::{collections::{BTreeMap,BTreeSet},time::{Duration,Instant,SystemTime,UNIX_EPOCH}};
+use bevy::platform::time::Instant;
+use crate::wall_clock::{SystemTime,UNIX_EPOCH};
+use std::{collections::{BTreeMap,BTreeSet},time::Duration};
 use wire::*;
 
 type Slot=(u64,String,String);
@@ -35,7 +37,7 @@ impl Default for State {
     fn default() -> Self {
         let now=Instant::now();
         Self { epoch:(SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos() as u64).max(1),
-            connection:0,started:now,last_send:now-Duration::from_secs(1),definitions:BTreeMap::new(),
+            connection:0,started:now,last_send:now.checked_sub(Duration::from_secs(1)).unwrap_or(now),definitions:BTreeMap::new(),
             bodies:BTreeMap::new(),pending_poses:BTreeMap::new(),graphics:BTreeMap::new(),
             node_sequences:BTreeMap::new(),attachments:BTreeMap::new(),
             warnings:BTreeSet::new(),last_problem:String::new(),status:String::new() }

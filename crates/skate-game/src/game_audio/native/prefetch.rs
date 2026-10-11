@@ -196,7 +196,7 @@ mod tests {
     use super::super::super::library::WAV_DECODES;
     use super::super::Native;
     use super::*;
-    use std::time::Instant;
+    use bevy::platform::time::Instant;
 
     fn decodes() -> u64 {
         WAV_DECODES.with(|n| n.get())

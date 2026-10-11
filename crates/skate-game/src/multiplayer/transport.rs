@@ -1,9 +1,10 @@
 use skate_net::directory::{self, Command as LobbyCommand, Event, Request, Response};
+use bevy::platform::time::Instant;
 use std::{
     io,
     net::{SocketAddr, UdpSocket},
     process::{Child, Command, Stdio},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 /// Platform adapters move opaque bounded datagrams; session/actors live above this.

@@ -86,6 +86,8 @@ pub(crate) fn build(
     let mut app = App::new();
     crate::custom_models::register_source(&mut app);
     crate::modding::register_source(&mut app);
+    #[cfg(target_arch = "wasm32")]
+    crate::web::register_installation_source(&mut app, &config.asset_root);
     app.add_plugins(
         DefaultPlugins
             .set(AssetPlugin {
@@ -172,5 +174,7 @@ pub(crate) fn build(
     app.add_plugins(crate::game_audio::GameAudioPlugin);
     app.add_systems(Last, crate::crash_context::sample);
     crate::profiling::install(&mut app);
+    #[cfg(target_arch = "wasm32")]
+    app.add_systems(Update, crate::web::announce);
     app
 }

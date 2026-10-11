@@ -1,7 +1,14 @@
 //! Transactional world replacement: prepare without mutating the live session,
 //! then commit at a schedule boundary with gameplay suspended.
 use bevy::prelude::*;
-use std::{path::PathBuf, sync::{Arc, atomic::{AtomicU8, Ordering}}, thread::JoinHandle, time::Instant};
+use bevy::platform::time::Instant;
+use std::{path::PathBuf, sync::{Arc, atomic::{AtomicU8, Ordering}}};
+// The map loader's worker: a thread natively; in the browser, which has no threads, it reads the
+// map's files ahead and then runs on the main thread between frames (`web::Job`).
+#[cfg(not(target_arch = "wasm32"))]
+use std::thread::JoinHandle as Job;
+#[cfg(target_arch = "wasm32")]
+use crate::web::Job;
 use crate::{config::Config, map_library::Entry, map_render::PreparedScene,
     physics::{GamePhysics, PlayerControls, SkaterRuntime}};
 
@@ -53,7 +60,7 @@ struct PreparedWorld {
 enum Phase {
     Idle,
     Requested(Entry),
-    Loading { entry: Entry, progress: Arc<AtomicU8>, job: JoinHandle<Result<PreparedWorld, String>> },
+    Loading { entry: Entry, progress: Arc<AtomicU8>, job: Job<Result<PreparedWorld, String>> },
     // Let extraction see the committed scene before releasing the pause menu.
     Publishing { frames: u8, notice: String },
 }
@@ -109,7 +116,9 @@ fn start(world: &World, entry: Entry) -> Result<Phase, String> {
     let selected = entry.clone();
     let progress = Arc::new(AtomicU8::new(0));
     let stage = progress.clone();
-    let job = std::thread::Builder::new().name("map-loader".into()).spawn(move || {
+    #[cfg(target_arch = "wasm32")]
+    let files = crate::web::map_files(&root, entry.path.as_deref());
+    let load = move || {
         let _span = info_span!("load_map_transition").entered();
         let started = Instant::now();
         let map = info_span!("read_map").in_scope(|| selected.path.as_deref().map(skate_data::skate_map::SkateMap::load).transpose())?;
@@ -124,14 +133,13 @@ fn start(world: &World, entry: Entry) -> Result<Phase, String> {
         // Both builders only read the decoded package. Reserve render handles
         // on a second worker while the first constructs fresh simulation state;
         // neither publishes to the live world until both have succeeded.
-        let (physics, skater, controls, camera, simulation_time, render_time) =
-            std::thread::scope(|scope| -> Result<_, String> {
-                let rendering = std::thread::Builder::new().name("map-render-loader".into())
-                    .spawn_scoped(scope, || {
-                        let render_started = Instant::now();
-                        scene.prepare(map.as_ref(), &root);
-                        render_started.elapsed()
-                    }).map_err(|e| format!("Could not start render loader: {e}"))?;
+        let (render_time, (simulation, simulation_time)) = beside(
+            || {
+                let render_started = Instant::now();
+                scene.prepare(map.as_ref(), &root);
+                render_started.elapsed()
+            },
+            || {
                 let simulation_started = Instant::now();
                 let simulation = (|| -> Result<_, String> {
                     stage.store(1, Ordering::Relaxed);
@@ -145,21 +153,41 @@ fn start(world: &World, entry: Entry) -> Result<Phase, String> {
                 })();
                 let simulation_time = simulation_started.elapsed();
                 stage.store(3, Ordering::Relaxed);
-                // Explicitly join even on a simulation error: no background
-                // render work or reserved scene can outlive a failed request.
-                let render_time = rendering.join()
-                    .map_err(|_| "Map render preparation failed unexpectedly".to_string())?;
-                let (physics, skater, controls, camera) = simulation?;
-                Ok((physics, skater, controls, camera, simulation_time, render_time))
-            })?;
-        eprintln!("MAP_LOAD_TIMING name={:?} read_ms={} validation_ms={} simulation_ms={} render_ms={} prepare_ms={} parallel=true",
+                (simulation, simulation_time)
+            },
+        )?;
+        let (physics, skater, controls, camera) = simulation?;
+        eprintln!("MAP_LOAD_TIMING name={:?} read_ms={} validation_ms={} simulation_ms={} render_ms={} prepare_ms={} parallel={}",
             metadata.name, read_time.as_millis(), validation_time.as_millis(),
-            simulation_time.as_millis(), render_time.as_millis(), started.elapsed().as_millis());
+            simulation_time.as_millis(), render_time.as_millis(), started.elapsed().as_millis(), !cfg!(target_arch = "wasm32"));
         // Drop the decoded package on this worker. Physics and rendering now
         // own their data; retaining it would double large-city CPU memory.
         Ok(PreparedWorld { map_fingerprint, scene, physics, skater, controls, camera, metadata, retail, triggers, difficulty })
-    }).map_err(|e| format!("Could not start map loader: {e}"))?;
+    };
+    #[cfg(not(target_arch = "wasm32"))]
+    let job = std::thread::Builder::new().name("map-loader".into()).spawn(load)
+        .map_err(|e| format!("Could not start map loader: {e}"))?;
+    #[cfg(target_arch = "wasm32")]
+    let job = Job::spawn(files, load);
     Ok(Phase::Loading { entry, progress, job })
+}
+
+/// Runs `render` beside `simulate`, which both only read the decoded package: `render` on a
+/// second worker natively, one after the other in the browser.
+fn beside<R: Send, S>(render: impl FnOnce() -> R + Send, simulate: impl FnOnce() -> S) -> Result<(R, S), String> {
+    #[cfg(not(target_arch = "wasm32"))]
+    return std::thread::scope(|scope| {
+        let rendering = std::thread::Builder::new().name("map-render-loader".into())
+            .spawn_scoped(scope, render).map_err(|e| format!("Could not start render loader: {e}"))?;
+        let simulated = simulate();
+        // Explicitly join even on a simulation error: no background
+        // render work or reserved scene can outlive a failed request.
+        let rendered = rendering.join()
+            .map_err(|_| "Map render preparation failed unexpectedly".to_string())?;
+        Ok((rendered, simulated))
+    });
+    #[cfg(target_arch = "wasm32")]
+    Ok((render(), simulate()))
 }
 
 fn poll(world: &mut World) {
@@ -177,7 +205,15 @@ fn poll(world: &mut World) {
         },
         Phase::Loading { job, .. } => match job.join().unwrap_or_else(|_| Err("Map loader failed unexpectedly".into())) {
             Ok(prepared) => {
+                #[cfg(target_arch = "wasm32")]
+                let left = world.resource::<Config>().map_path.clone();
                 let mut notice = commit(world, prepared);
+                // The page need not hold the map just left; going back reads it again.
+                #[cfg(target_arch = "wasm32")]
+                {
+                    let config = world.resource::<Config>();
+                    crate::web::release_map(&config.asset_root, left.as_deref(), config.map_path.as_deref());
+                }
                 let config = world.resource::<Config>();
                 match crate::map_library::save_default(&config.asset_root, config.map_path.as_deref()) {
                     Ok(()) => notice.push_str(" Default map saved."),

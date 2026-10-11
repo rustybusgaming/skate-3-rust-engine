@@ -5,13 +5,14 @@
 //! take it as `Option<ResMut<_>>` — instrumentation must never cost anything in
 //! a shipping session.
 use bevy::prelude::*;
+use bevy::platform::time::Instant;
 use std::{
     path::PathBuf,
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 /// Seconds discarded before sampling, so shader compilation, asset streaming and
@@ -443,7 +444,7 @@ fn write_report(path: &std::path::Path, report: &Report) -> std::io::Result<()> 
             "triangles": f.triangles,
         })).collect::<Vec<_>>(),
     });
-    std::fs::write(path, serde_json::to_vec_pretty(&json)?)
+    skate_fs::write(path, serde_json::to_vec_pretty(&json)?)
 }
 
 #[cfg(test)]

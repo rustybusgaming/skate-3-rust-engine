@@ -163,7 +163,7 @@ pub(crate) fn settings_path(asset_root: &Path) -> PathBuf {
 /// The saved quality settings, read where the menu is not available (the map build worker).
 /// Missing or unreadable settings are the defaults, exactly as the menu treats them.
 pub(crate) fn saved(asset_root: &Path) -> Quality {
-    std::fs::read(settings_path(asset_root))
+    skate_fs::read(settings_path(asset_root))
         .ok()
         .and_then(|bytes| serde_json::from_slice::<Quality>(&bytes).ok())
         .unwrap_or_default()
@@ -348,12 +348,12 @@ mod tests {
         let root = std::env::temp_dir().join(format!("skate-quality-{}", std::process::id()));
         let assets = root.join("assets");
         assert_eq!(saved(&assets), Quality::default());
-        std::fs::create_dir_all(root.join("settings")).unwrap();
-        std::fs::write(settings_path(&assets), r#"{"width":1920,"height":1080,"scale":100,"fps":0,"anisotropy":8}"#).unwrap();
+        skate_fs::create_dir_all(root.join("settings")).unwrap();
+        skate_fs::write(settings_path(&assets), r#"{"width":1920,"height":1080,"scale":100,"fps":0,"anisotropy":8}"#).unwrap();
         assert_eq!(saved(&assets).anisotropy, 8);
-        std::fs::write(settings_path(&assets), r#"{"anisotropy":5}"#).unwrap();
+        skate_fs::write(settings_path(&assets), r#"{"anisotropy":5}"#).unwrap();
         assert_eq!(saved(&assets).anisotropy, 1);
-        std::fs::remove_dir_all(&root).unwrap();
+        skate_fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]

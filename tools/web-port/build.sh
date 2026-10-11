@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
-# Builds the browser package into target/web/dist: the loader page, the wasm-bindgen glue and the
-# engine (docs/web-port/README.md). Upload that folder to any static host.
+# Builds the browser package into target/web/dist: the loader page and its installation reader,
+# the wasm-bindgen glue and the engine (docs/web-port/README.md). Upload that folder to any static host.
 #
 # The page links to the source of the exact commit it was built from, as GPL-3.0 requires for
 # the served .wasm, so a tree with uncommitted changes refuses to package. SKATE_WEB_ALLOW_DIRTY=1
@@ -30,4 +30,5 @@ sed -e "s#__SKATE_SOURCE__#$source#g" \
     -e "s#__SKATE_REVISION_SHORT__#$(echo "$revision" | cut -c1-12)#g" \
     -e "s#__SKATE_REVISION__#$revision#g" \
     web/index.html > "$out/index.html"
+cp web/installation.js "$out/"
 ls -l "$out"
