@@ -52,7 +52,7 @@
   Unofficial; not affiliated with EA. No Skate 3 data is served from this site.
 </footer>
 <script type="module">
-  import { chooseFolder, fromHandle, mount, rememberedFolder } from './installation.js';
+  import { chooseFolder, fromHandle, fromServer, mount, rememberedFolder } from './installation.js';
 
   const status = document.getElementById('status');
   const message = document.getElementById('message');
@@ -124,6 +124,17 @@
     }
   }
 
+  // `#mount=<token>`: the address skate-web-server printed for its operator's own installation.
+  // The fragment never reaches a server; keep the token for reloads of this tab only, out of the
+  // address bar.
+  const session = (action) => { try { return action(sessionStorage); } catch { return null; } };
+  const fragment = new URLSearchParams(location.hash.slice(1));
+  if (fragment.has('mount')) {
+    session((s) => s.setItem('skate3-mount', fragment.get('mount')));
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+  const mountToken = session((s) => s.getItem('skate3-mount'));
+
   let engine = null;
   if (!navigator.gpu) {
     fail('This browser has no WebGPU. Use a current Chrome or Edge, or a WebGPU-enabled Firefox or Safari.');
@@ -135,6 +146,17 @@
     help.hidden = false;
     const input = document.getElementById('folder');
     choose.onclick = () => start(() => chooseFolder(input, show));
+    if (mountToken) {
+      start(async () => {
+        try {
+          return await fromServer(mountToken, show);
+        } catch (error) {
+          // A stale or wrong token: the folder picker is offered after a reload.
+          session((s) => s.removeItem('skate3-mount'));
+          throw error;
+        }
+      });
+    }
     const remembered = await rememberedFolder();
     if (remembered) {
       again.textContent = `Use “${remembered.name}” again`;

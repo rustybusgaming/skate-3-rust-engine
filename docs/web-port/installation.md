@@ -21,8 +21,12 @@ disk as the engine needs them, and keeps the settings the engine writes in the b
 3. Serve `target/web/dist` from `localhost` (WebGPU needs a secure context, and `localhost` is one):
 
    ```
-   python3 -m http.server --directory target/web/dist 8080
+   cargo run --release -p skate-web-server
    ```
+
+   [server.md](server.md) has the options. `--installation <your package folder>` makes the server
+   serve your installation to your own browser, so you need not choose the folder on the page.
+   Any static file server works too, e.g. `python3 -m http.server --directory target/web/dist 8080`.
 
 4. Open <http://localhost:8080> in a current Chrome or Edge (WebGPU on). Choose
    **Choose installation folder** and pick the package folder, its `data` folder, or

@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/skate-core", "crates/skate-fs", "crates/skate-audio", "crates/skate-audio-fma", "crates/skate-data", "crates/skate-game", "crates/skate-dynamics", "crates/skate-mods", "crates/skate-net", "crates/skate-steam-relay", "crates/skate-wasm-parity"]
+members = ["crates/skate-core", "crates/skate-fs", "crates/skate-audio", "crates/skate-audio-fma", "crates/skate-data", "crates/skate-game", "crates/skate-dynamics", "crates/skate-mods", "crates/skate-net", "crates/skate-steam-relay", "crates/skate-web-server", "crates/skate-wasm-parity"]
 resolver = "3"
 
 [workspace.package]

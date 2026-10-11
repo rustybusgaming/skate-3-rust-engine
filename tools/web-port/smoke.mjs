@@ -17,6 +17,11 @@
 //              main thread stalls for 400 ms, and the audio output (Bevy → cpal → Web Audio) must
 //              not schedule a buffer in the past afterwards (vendor/README.md, cpal).
 //
+//   mount      the same package through skate-web-server's installation mount (when the
+//              server is built: cargo build -p skate-web-server), at the address it prints: the
+//              page starts from the server's listing, reads files with the token, and stops at the
+//              same placeholder after applying the texture pack.
+//
 // Each fails on a panic, any console error (a shader the browser's WebGPU rejects, a pipeline or
 // validation failure), a page error or a timeout. Saves target/web/smoke.png, but headless
 // Chromium does not composite WebGPU canvases into screenshots, so the canvas shows blank there.
@@ -26,6 +31,8 @@
 // Needs Playwright with its Chromium (resolved through NODE_PATH, like a global install).
 import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { crc32, deflateSync } from 'node:zlib';
+import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { dirname, extname, join, normalize, resolve } from 'node:path';
@@ -113,7 +120,7 @@ const folders = await synthetic();
 const browser = await chromium.launch({ args: ['--enable-unsafe-webgpu', '--autoplay-policy=no-user-gesture-required'] });
 
 /** Opens the page in a fresh profile; `choose` picks a folder through the directory input. */
-async function run(name, { folder, withhold, gamepads, until, check, after }) {
+async function run(name, { address = url, folder, withhold, gamepads, until, check, after }) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await context.newPage();
   // Use the <input webkitdirectory> path: the File System Access picker cannot be automated.
@@ -182,8 +189,8 @@ async function run(name, { folder, withhold, gamepads, until, check, after }) {
     if (!String(error).includes('Using exceptions for control flow')) failure ??= `page error: ${error}`;
   });
   const started = Date.now();
-  await page.goto(url);
-  await page.getByText('Choose your installation folder to play.').waitFor({ timeout: 30_000 });
+  await page.goto(address);
+  if (address === url) await page.getByText('Choose your installation folder to play.').waitFor({ timeout: 30_000 });
   if (folder) {
     const chooser = page.waitForEvent('filechooser');
     await page.getByRole('button', { name: 'Choose installation folder' }).click();
@@ -257,6 +264,34 @@ const lines = await run('synthetic', {
 });
 for (const tag of ['SKATE_WEB_READ_AHEAD', 'TEXTURE_PACK', 'Controller 0:', 'SKATE_WEB_READY', 'SKATE_WEB_STOPPED']) {
   for (const line of lines.filter((l) => l.includes(tag))) console.log(`  ${line.slice(0, 200)}`);
+}
+
+// The same package through skate-web-server: its static serving and the installation mount.
+const serverBinary = ['debug', 'release'].map((p) => resolve(repository, 'target', p, 'skate-web-server')).find(existsSync);
+if (serverBinary) {
+  const child = spawn(serverBinary, ['--dist', dist, '--listen', '127.0.0.1:0', '--installation', folders.pkg], { stdio: ['ignore', 'pipe', 'inherit'] });
+  const address = await new Promise((found, failed) => {
+    let out = '';
+    child.stdout.on('data', (chunk) => {
+      out += chunk;
+      const match = /(http:\/\/localhost:\d+\/#mount=[0-9a-f]+)/.exec(out);
+      if (match) found(match[1]);
+    });
+    child.once('exit', (code) => failed(new Error(`skate-web-server exited (${code}): ${out}`)));
+  });
+  await run('mount', {
+    address,
+    until: (lines) => seen(lines, 'SKATE_WEB_READY') && seen(lines, 'SKATE_WEB_STOPPED'),
+    check(lines) {
+      const stop = seen(lines, 'SKATE_WEB_STOPPED');
+      if (!stop.includes('Input configuration')) return `stopped somewhere else: ${stop}`;
+      if (!seen(lines, 'TEXTURE_PACK HD: replaced 1 of 2 textures in format-demo')) return 'the texture pack did not come through the mount';
+      return null;
+    },
+  });
+  child.kill();
+} else {
+  console.log('skipped mount: build the server first (cargo build -p skate-web-server)');
 }
 
 await browser.close();

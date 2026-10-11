@@ -6,9 +6,12 @@ Building and checking the browser build ([`docs/web-port/`](../../docs/web-port/
 |---|---|
 | `parity.sh` | Builds `skate-wasm-parity` natively and for `wasm32-unknown-unknown`, runs it natively twice (audio on its hardware-FMA copy, then `SKATE_AUDIO_FMA=0`) and as wasm in V8, and compares every digest. Exit 1 on any engine or cost mismatch. |
 | `parity.mjs` | The comparison and report half of `parity.sh`: runs the wasm build, reads the native runs, counts libm differences in ulps. |
-| `build.sh` | Builds the browser package into `target/web/dist` (`web` cargo profile, `wasm-bindgen`, the loader page with the build's commit and source link, and its installation reader). Refuses uncommitted changes, so the GPL source link always matches. |
+| `build.sh` | Builds the browser package into `target/web/dist`: the `web` cargo profile, then `wasm-bindgen` without the function-name section (`SKATE_WEB_KEEP_NAMES=1` keeps it). Adds the loader page with the build's commit and source link, its installation reader, and gzip (and brotli) copies for `skate-web-server`. Refuses uncommitted changes, so the GPL source link always matches. |
+| `compress.mjs` | Writes the gzip and brotli copies `build.sh` puts beside each served file. |
 | `smoke.mjs` | Serves that package on localhost and drives it in headless Chromium with WebGPU: the folder picker, a folder with no installation, and a synthetic installation (no game data) that startup must load up to its placeholder input config, retrying once for a withheld file. On that page, a texture pack in the package must replace the demo map's checker (read on a retry once the map is parsed), a fake standard pad must reach controller slot 0 through the Gamepad API, and audio must keep its schedule across a main-thread stall. Fails on a panic, console error or page error. Needs Playwright. |
 | `installation.test.mjs` | `node --test` checks of the page's installation finder and store (`web/installation.js`). |
+
+The server itself is `crates/skate-web-server` ([docs/web-port/server.md](../../docs/web-port/server.md)): `cargo run --release -p skate-web-server`.
 | `wasi-test-runner.mjs` | Cargo runner that executes `wasm32-wasip1` test binaries on Node's built-in WASI, so the stock test suites run as wasm. |
 
 ## Requirements
@@ -21,7 +24,8 @@ Building and checking the browser build ([`docs/web-port/`](../../docs/web-port/
 
 ```
 tools/web-port/build.sh            # the browser package, in target/web/dist
-node tools/web-port/smoke.mjs      # drive it in headless Chromium
+cargo run --release -p skate-web-server   # serve it at http://127.0.0.1:8080/
+node tools/web-port/smoke.mjs      # drive it in headless Chromium (and through the server, once built)
 node --test tools/web-port/installation.test.mjs
 
 tools/web-port/parity.sh

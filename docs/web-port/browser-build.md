@@ -31,12 +31,12 @@ three pages:
 It fails on a panic, a console error or a page error, and writes a screenshot to
 `target/web/smoke.png`.
 
-Results at milestone 6 (Rust 1.97.0; Playwright's Chromium with SwiftShader WebGPU):
+Results at milestones 6 and 4 (Rust 1.97.0; Playwright's Chromium with SwiftShader WebGPU):
 
 | | |
 |---|---|
 | `web` profile build of the engine (4 cores) | 9 min 19 s with dependencies cold (milestone 2); about 3 min after a change to the game |
-| `skate3rust_bg.wasm` | 132.6 MB raw, **22.1 MB gzip** (what a static host sends) |
+| `skate3rust_bg.wasm` | 72.7 MB raw (132.6 MB before milestone 4 left out the function names), **9.8 MB brotli**, 17.1 MB gzip ([server.md](server.md#download-size)) |
 | `smoke.mjs` | picker, no-installation and synthetic-installation pages pass with no console error, panic or page error. The synthetic installation reaches its placeholder input config after one read-ahead retry. The fake standard pad reaches slot 0 and the unmapped one is refused. After a 400 ms stall, 22 of 22 audio buffers are scheduled on time (15 of 30 were late with unpatched cpal) |
 | `installation.test.mjs` | 4 passed |
 | Native `skate-game` tests | 494 passed (the 490 from before the port plus 4 new input tests), 183 ignored; the setup fingerprint test fails as it did before the port |
@@ -54,11 +54,11 @@ What the smoke test cannot show:
 
 ## Hosting
 
-The package is static files, so any static host works. WebGPU only runs on HTTPS pages (or
-`localhost`). GitHub Pages fits (1 GB per site) when deployed from Actions; a 130 MB file is over
-git's 100 MB push limit, so it is not committed. Cloudflare Pages caps a single file at 25 MiB:
-put `skate3rust_bg.wasm` on R2 or use another host. Shrinking the module (`wasm-opt`, size-tuned
-codegen) belongs with the server and hosting work (milestone 4). Never upload a converted
+`skate-web-server` serves the package with its precompressed copies ([server.md](server.md), which
+also covers HTTPS through Caddy or Cloudflare Tunnel). The package is static files, so any static
+host works too. WebGPU only runs on HTTPS pages (or `localhost`). GitHub Pages fits (1 GB per site)
+when deployed from Actions; the 73 MB engine is not committed to git. Cloudflare Pages caps a
+single file at 25 MiB: put `skate3rust_bg.wasm` on R2 or use another host. Never upload a converted
 installation anywhere public.
 
 ## What is gated, and why
