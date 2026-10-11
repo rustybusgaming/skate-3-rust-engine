@@ -70,7 +70,7 @@ impl Config {
                 }
                 Some("--map") => {
                     let path = PathBuf::from(args.next().ok_or("--map requires a .skate file")?);
-                    config.map = Some(skate_data::skate_map::SkateMap::load(&path)?);
+                    config.map = Some(crate::texture_pack::load_map(&path, &config.asset_root)?);
                     config.map_path = Some(skate_fs::canonicalize(&path).map_err(|e| e.to_string())?);
                     explicit_map = true;
                 }
@@ -107,7 +107,7 @@ impl Config {
         };
         if !explicit_map {
             if let Some(path) = crate::map_library::default_map(&config.asset_root)? {
-                config.map = Some(skate_data::skate_map::SkateMap::load(&path)?);
+                config.map = Some(crate::texture_pack::load_map(&path, &config.asset_root)?);
                 config.map_path = Some(skate_fs::canonicalize(&path).map_err(|e| e.to_string())?);
             }
         }

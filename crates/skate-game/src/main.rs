@@ -65,6 +65,7 @@ mod game_audio;
 pub(crate) mod world_audio;
 pub(crate) mod ui_audio;
 mod trigger_volumes;
+mod texture_pack;
 #[cfg(target_arch = "wasm32")]
 mod web;
 
@@ -93,6 +94,9 @@ fn main() -> bevy::app::AppExit {
     // Setup tool mode: `--extract-menu-tables <default.xex> <menu-tables.json>`.
     #[cfg(not(target_arch = "wasm32"))]
     if let Some(code) = extract_menu_tables() { std::process::exit(code); }
+    // Texture pack tool mode: `--dump-textures <map.skate> <folder>`.
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(code) = dump_textures() { std::process::exit(code); }
     #[cfg(not(target_arch = "wasm32"))]
     if let Some(code) = crash_report::entry() { std::process::exit(code); }
     #[cfg(not(target_arch = "wasm32"))]
@@ -191,6 +195,30 @@ fn failed(error: impl std::fmt::Display) -> bevy::app::AppExit {
     return web::failed(error.to_string());
     #[cfg(not(target_arch = "wasm32"))]
     bevy::app::AppExit::error()
+}
+
+/// Writes a map's textures as PNG files in the layout a texture pack uses (texture_pack::dump):
+/// the starting point of a pack, from the player's own installation.
+#[cfg(not(target_arch = "wasm32"))]
+fn dump_textures() -> Option<i32> {
+    let mut args = std::env::args_os().skip(1);
+    if args.next()? != "--dump-textures" {
+        return None;
+    }
+    let (Some(map), Some(out), None) = (args.next(), args.next(), args.next()) else {
+        eprintln!("Usage: skate3rust --dump-textures <map.skate> <folder>");
+        return Some(2);
+    };
+    match texture_pack::dump(std::path::Path::new(&map), std::path::Path::new(&out)) {
+        Ok(count) => {
+            println!("TEXTURES_DUMPED {count}");
+            Some(0)
+        }
+        Err(error) => {
+            eprintln!("Texture dump failed: {error}");
+            Some(1)
+        }
+    }
 }
 
 #[cfg(test)]

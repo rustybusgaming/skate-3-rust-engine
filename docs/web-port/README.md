@@ -29,11 +29,11 @@ alike). Each milestone is finished, verified, committed and reported before the 
 | 1 | Engine-independent crates build for wasm32; prove bit parity with native and measure `mul_add` | **Done** ([determinism.md](determinism.md)) |
 | G1 | Optional graphics quality: supersampling, edge-adaptive upscaling (FSR 1), CAS sharpening, FXAA/SMAA, anisotropic filtering; defaults unchanged | **Done** ([../graphics/quality-settings.md](../graphics/quality-settings.md)) |
 | 2 | `skate-game` compiles for wasm32 (WebGPU backend, canvas window, browser logging; Windows and process-level modules, SDL3 and file asset sources gated) | **Done** ([browser-build.md](browser-build.md)) |
-| G2 | HD texture pack loader: replacement textures by name from a folder the player fills (nothing EA-derived shipped) | Next |
+| G2 | HD texture pack loader: replacement textures by name from a folder the player fills (nothing EA-derived shipped) | **Done** ([../graphics/texture-packs.md](../graphics/texture-packs.md)) |
 | 3 | Browser installation: the player chooses their own converted installation, read from their disk as the engine needs it; startup, maps and the asset server run from it | **Done** ([installation.md](installation.md)) |
-| 4 | `skate-web-server`: serves the wasm build and loader page (source link, MIME, caching), opt-in localhost operator asset mount with token | Proposed |
-| 5 | Multiplayer through the server: lobby directory and a WebSocket relay for `skate-net` snapshots | Proposed |
-| 6 | Browser input and audio (Gamepad API in the XInput shape the game expects, Web Audio output for `skate-audio`), performance pass | Proposed |
+| 4 | `skate-web-server`: serves the wasm build and loader page (source link, MIME, caching), opt-in localhost operator asset mount with token; a smaller download | **Done** ([server.md](server.md)) |
+| 5 | Multiplayer through the server: lobby directory and a WebSocket relay for `skate-net` snapshots | Next |
+| 6 | Browser input and audio (Gamepad API in the XInput shape the game expects, Web Audio output for `skate-audio`), performance pass | **Done** ([input-audio.md](input-audio.md)) |
 
 ## Codebase map
 
@@ -51,12 +51,13 @@ Surveyed from the tree and checked while porting; corrections to the brief's sur
 | `skate-fs` | **New.** The engine's file API: `std::fs` natively, the player's mounted installation in the browser ([installation.md](installation.md)). | Built for both; its tree is tested natively. |
 | `skate-net` | Transport-neutral snapshot protocol: `lobby`, `directory`, `packed`, prediction, interpolation. | Builds. `socket` (the `socket2` buffer tuning) is native-only; `Instant` is `web-time` on wasm. Test suite identical as wasm (real-UDP tests excluded). |
 | `skate-steam-relay` | Steamworks helper executable. | Excluded from web builds. |
+| `skate-web-server` | **New.** Serves the browser package, and optionally the operator's own installation to their own browser ([server.md](server.md)). | Native only; not in any Windows package. |
 | `skate-wasm-parity` | **New.** Native-vs-wasm bit parity probe ([determinism.md](determinism.md)). | Built for both. Not part of any Windows package (the build scripts select `-p skate-game` / `-p skate-steam-relay`). |
-| `skate-game` (~121k lines) | The Bevy app: `skate3rust`, `skate3-multiplayer`, `skate3-custom-models`. Modules declared in `src/main.rs`. | `skate3rust` builds and starts on WebGPU from the installation the player chooses ([browser-build.md](browser-build.md), [installation.md](installation.md)). |
+| `skate-game` (~121k lines) | The Bevy app: `skate3rust`, `skate3-multiplayer`, `skate3-custom-models`. Modules declared in `src/main.rs`. | `skate3rust` builds and starts on WebGPU from the installation the player chooses, with Gamepad API pads and Web Audio ([browser-build.md](browser-build.md), [installation.md](installation.md), [input-audio.md](input-audio.md)). |
 
-Patched Bevy crates (`vendor/bevy_pbr`, `vendor/bevy_core_pipeline`, `vendor/sdl3-sys`) come in
-through `[patch.crates-io]` and are explained in `vendor/README.md`. The Bevy patches must compile and
-behave the same on WebGPU (milestone 2).
+Patched crates (`vendor/bevy_pbr`, `vendor/bevy_core_pipeline`, `vendor/sdl3-sys`, `vendor/cpal`) come
+in through `[patch.crates-io]` and are explained in `vendor/README.md`. The Bevy patches must compile and
+behave the same on WebGPU (milestone 2). The cpal patch changes only its Web Audio host (milestone 6).
 
 ### Startup path (`crates/skate-game/src/main.rs`, `app.rs`, `config.rs`, `setup.rs`)
 

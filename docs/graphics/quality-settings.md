@@ -13,6 +13,7 @@ unchanged. The code is `crates/skate-game/src/graphics_quality.rs` and
 | Sharpening | Off, 25–100% | AMD contrast-adaptive sharpening (Bevy's CAS) on the 3D camera, at render resolution, after anti-aliasing. |
 | Anti-aliasing | Off, FXAA, SMAA, SMAA Ultra | Bevy's post-process passes on the 3D camera, after the retail tone pass. |
 | Texture filtering | Trilinear, 2×–16× anisotropic | World texture pages. Applies the next time a map loads (MAPS → a map → Skate from default spawn reloads it). |
+| Texture pack | Off, each folder in `texture-packs` | Your own replacement textures ([texture-packs.md](texture-packs.md)). World textures apply the next time a map loads, character textures at the next start. |
 
 Upscaling below 100% with Edge-adaptive and some sharpening is the FSR 1 recipe for weak GPUs and the
 browser build. CAS runs before the upscale here (FSR 1 proper runs RCAS after it), which keeps the

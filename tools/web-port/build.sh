@@ -6,6 +6,12 @@
 # the served .wasm, so a tree with uncommitted changes refuses to package. SKATE_WEB_ALLOW_DIRTY=1
 # overrides that for local testing only: never publish such a build.
 # Needs the wasm32-unknown-unknown target and wasm-bindgen-cli 0.2.127 (the version in Cargo.lock).
+#
+# Function names (the module's "name" section, about 45 % of it) only make console stack traces
+# readable, so they are left out; SKATE_WEB_KEEP_NAMES=1 keeps them for debugging. Each served file
+# also gets gzip and brotli copies (compress.mjs, Node) that skate-web-server sends to browsers that
+# accept them; static hosts compress by themselves. Brotli runs at quality 11 (about three minutes
+# for the engine), or 9 for a SKATE_WEB_ALLOW_DIRTY test build.
 set -eu
 root=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$root"
@@ -25,10 +31,15 @@ source=${SKATE_SOURCE_URL:-$(git remote get-url origin | sed -e 's#^git@github\.
 cargo build --locked --profile web -p skate-game --bin skate3rust --target wasm32-unknown-unknown --no-default-features
 rm -rf "$out"
 mkdir -p "$out"
-wasm-bindgen --target web --no-typescript --out-dir "$out" target/wasm32-unknown-unknown/web/skate3rust.wasm
+names=--remove-name-section
+if [ "${SKATE_WEB_KEEP_NAMES:-0}" = 1 ]; then names=; fi
+wasm-bindgen --target web --no-typescript $names --remove-producers-section --out-dir "$out" target/wasm32-unknown-unknown/web/skate3rust.wasm
 sed -e "s#__SKATE_SOURCE__#$source#g" \
     -e "s#__SKATE_REVISION_SHORT__#$(echo "$revision" | cut -c1-12)#g" \
     -e "s#__SKATE_REVISION__#$revision#g" \
     web/index.html > "$out/index.html"
 cp web/installation.js "$out/"
+quality=11
+if [ "${SKATE_WEB_ALLOW_DIRTY:-0}" = 1 ]; then quality=9; fi
+node tools/web-port/compress.mjs "$quality" "$out"/index.html "$out"/installation.js "$out"/skate3rust.js "$out"/skate3rust_bg.wasm
 ls -l "$out"

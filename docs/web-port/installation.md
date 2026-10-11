@@ -21,8 +21,12 @@ disk as the engine needs them, and keeps the settings the engine writes in the b
 3. Serve `target/web/dist` from `localhost` (WebGPU needs a secure context, and `localhost` is one):
 
    ```
-   python3 -m http.server --directory target/web/dist 8080
+   cargo run --release -p skate-web-server
    ```
+
+   [server.md](server.md) has the options. `--installation <your package folder>` makes the server
+   serve your installation to your own browser, so you need not choose the folder on the page.
+   Any static file server works too, e.g. `python3 -m http.server --directory target/web/dist 8080`.
 
 4. Open <http://localhost:8080> in a current Chrome or Edge (WebGPU on). Choose
    **Choose installation folder** and pick the package folder, its `data` folder, or
@@ -35,6 +39,11 @@ disk as the engine needs them, and keeps the settings the engine writes in the b
 
 On the next visit, Chrome and Edge offer **Use “<folder>” again**, which asks to read the same
 folder without picking it.
+
+Pads come through the Gamepad API (press a button on yours once the page is open), and audio
+through Web Audio: see [input-audio.md](input-audio.md). Texture packs come with the package
+folder's `texture-packs` when you choose the package folder
+([../graphics/texture-packs.md](../graphics/texture-packs.md)).
 
 The automated check, `node tools/web-port/smoke.mjs`, cannot use real game data, so it uses a
 synthetic installation instead (below).
@@ -68,6 +77,8 @@ saved(path, bytes) → IndexedDB ◄───  settings written by the engine
   - under `assets/private`: the JSON files, menu movies, HUD and particles
   - the stock files startup reads: input config, state and camera graphs, the two animation
     banks, gesture patterns, camera shakes and CAC recipes
+  - the audio, except the ambience beds and decoded speech, which are read as they play
+    ([input-audio.md](input-audio.md))
   - the start map named by `settings/default-map.json`, with its sidecars, sky and lighting
 
   The customiser's models and textures, and the character, go through Bevy's asset server, which
@@ -88,8 +99,6 @@ saved(path, bytes) → IndexedDB ◄───  settings written by the engine
 
 | | Why | Where it comes back |
 |---|---|---|
-| Game audio | Banks would stream from disk, and play through Web Audio. Without its library the game runs silent, as it does natively when audio was not extracted | Milestone 6 |
-| Controllers | No pad backend yet: the keyboard drives the menus (arrows, Tab, Enter, Esc), but skating needs a pad | Milestone 6 (Gamepad API) |
 | Multiplayer | No UDP or Steam relay in a browser | Milestone 5 (WebSocket relay) |
 | Lua mods, imported custom characters | No Lua build for wasm32; the character library lives in `%LOCALAPPDATA%` | — |
 | Setup and the installation check | The page cannot run the setup tool; it only checks for `assets/private/game.json`. Refresh an outdated installation natively | — |

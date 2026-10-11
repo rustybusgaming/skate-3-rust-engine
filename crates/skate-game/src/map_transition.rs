@@ -65,9 +65,15 @@ enum Phase {
     Publishing { frames: u8, notice: String },
 }
 #[derive(Resource)]
-pub(crate) struct MapTransition { phase: Phase }
+pub(crate) struct MapTransition {
+    phase: Phase,
+    /// Files a browser map change wanted before they were read, read ahead of its next try
+    /// (`read_and_retry`), and how many tries that took. Natively always empty.
+    read_first: Vec<PathBuf>,
+    retries: u8,
+}
 impl Default for MapTransition {
-    fn default() -> Self { Self { phase: Phase::Idle } }
+    fn default() -> Self { Self { phase: Phase::Idle, read_first: Vec::new(), retries: 0 } }
 }
 impl MapTransition {
     pub fn busy(&self) -> bool { !matches!(self.phase, Phase::Idle) }
@@ -117,11 +123,15 @@ fn start(world: &World, entry: Entry) -> Result<Phase, String> {
     let progress = Arc::new(AtomicU8::new(0));
     let stage = progress.clone();
     #[cfg(target_arch = "wasm32")]
-    let files = crate::web::map_files(&root, entry.path.as_deref());
+    let files = {
+        let mut files = crate::web::map_files(&root, entry.path.as_deref());
+        files.extend(world.resource::<MapTransition>().read_first.iter().cloned());
+        files
+    };
     let load = move || {
         let _span = info_span!("load_map_transition").entered();
         let started = Instant::now();
-        let map = info_span!("read_map").in_scope(|| selected.path.as_deref().map(skate_data::skate_map::SkateMap::load).transpose())?;
+        let map = info_span!("read_map").in_scope(|| selected.path.as_deref().map(|path| crate::texture_pack::load_map(path, &root)).transpose())?;
         let map_fingerprint = crate::config::map_fingerprint(selected.path.as_deref())?;
         let read_time = started.elapsed();
         let validation_started = Instant::now();
@@ -172,6 +182,20 @@ fn start(world: &World, entry: Entry) -> Result<Phase, String> {
     Ok(Phase::Loading { entry, progress, job })
 }
 
+/// The browser reads a map's files ahead of a change, but texture pack files are known only once
+/// the map is parsed. A change that wanted files not read yet reads them and starts again, twice at
+/// most. Natively nothing is missed, so a failure is final, as before.
+fn read_and_retry(world: &mut World, entry: Entry, missed: Vec<PathBuf>) -> Option<Phase> {
+    let mut transition = world.resource_mut::<MapTransition>();
+    if missed.is_empty() || transition.retries >= 2 {
+        (transition.retries, transition.read_first) = (0, Vec::new());
+        return None;
+    }
+    transition.retries += 1;
+    transition.read_first.extend(missed);
+    Some(Phase::Requested(entry))
+}
+
 /// Runs `render` beside `simulate`, which both only read the decoded package: `render` on a
 /// second worker natively, one after the other in the browser.
 fn beside<R: Send, S>(render: impl FnOnce() -> R + Send, simulate: impl FnOnce() -> S) -> Result<(R, S), String> {
@@ -203,26 +227,39 @@ fn poll(world: &mut World) {
             Ok(phase) => phase,
             Err(error) => { failed(world, error); Phase::Idle }
         },
-        Phase::Loading { job, .. } => match job.join().unwrap_or_else(|_| Err("Map loader failed unexpectedly".into())) {
-            Ok(prepared) => {
-                #[cfg(target_arch = "wasm32")]
-                let left = world.resource::<Config>().map_path.clone();
-                let mut notice = commit(world, prepared);
-                // The page need not hold the map just left; going back reads it again.
-                #[cfg(target_arch = "wasm32")]
-                {
+        Phase::Loading { entry, job, .. } => {
+            #[cfg(target_arch = "wasm32")]
+            let missed = job.missed();
+            #[cfg(not(target_arch = "wasm32"))]
+            let missed = Vec::new();
+            match job.join().unwrap_or_else(|_| Err("Map loader failed unexpectedly".into())) {
+                Ok(prepared) => {
+                    {
+                        let mut transition = world.resource_mut::<MapTransition>();
+                        (transition.retries, transition.read_first) = (0, Vec::new());
+                    }
+                    #[cfg(target_arch = "wasm32")]
+                    let left = world.resource::<Config>().map_path.clone();
+                    let mut notice = commit(world, prepared);
+                    // The page need not hold the map just left; going back reads it again.
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        let config = world.resource::<Config>();
+                        crate::web::release_map(&config.asset_root, left.as_deref(), config.map_path.as_deref());
+                    }
                     let config = world.resource::<Config>();
-                    crate::web::release_map(&config.asset_root, left.as_deref(), config.map_path.as_deref());
+                    match crate::map_library::save_default(&config.asset_root, config.map_path.as_deref()) {
+                        Ok(()) => notice.push_str(" Default map saved."),
+                        Err(error) => notice.push_str(&format!(" Could not save default: {error}")),
+                    }
+                    Phase::Publishing { frames: 3, notice }
                 }
-                let config = world.resource::<Config>();
-                match crate::map_library::save_default(&config.asset_root, config.map_path.as_deref()) {
-                    Ok(()) => notice.push_str(" Default map saved."),
-                    Err(error) => notice.push_str(&format!(" Could not save default: {error}")),
-                }
-                Phase::Publishing { frames: 3, notice }
+                Err(error) => match read_and_retry(world, entry, missed) {
+                    Some(retry) => retry,
+                    None => { failed(world, error); Phase::Idle }
+                },
             }
-            Err(error) => { failed(world, error); Phase::Idle }
-        },
+        }
         Phase::Publishing { frames, notice } if frames > 0 => Phase::Publishing { frames: frames - 1, notice },
         Phase::Publishing { notice, .. } => {
             world.resource_mut::<crate::graphics_menu::Menu>().transition_finished(notice, true);

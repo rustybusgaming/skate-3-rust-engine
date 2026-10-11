@@ -100,6 +100,33 @@ export async function fromHandle(handle, progress) {
   return { name: handle.name, entries: await walk(handle, '', [], progress) };
 }
 
+/**
+ * The installation this page's own server serves to this machine (`skate-web-server
+ * --installation`, docs/web-port/server.md), with the token from the address it printed.
+ */
+export async function fromServer(token, progress) {
+  progress('Listing files…');
+  const headers = { Authorization: `Bearer ${token}` };
+  const listing = await fetch('mount/files.json', { headers });
+  if (!listing.ok) {
+    throw new Error(listing.status === 401
+      ? 'The server refused the installation token. Open the address skate-web-server printed.'
+      : `The server's installation: ${listing.status} ${await listing.text()}`);
+  }
+  const { name, files } = await listing.json();
+  const entry = (path, size) => {
+    const url = `mount/file/${path.split('/').map(encodeURIComponent).join('/')}`;
+    const get = async () => {
+      const response = await fetch(url, { headers });
+      if (!response.ok) throw new Error(`${path}: ${response.status} from the server`);
+      return response;
+    };
+    // The shape of a File, as far as mount() uses one.
+    return { size, arrayBuffer: async () => (await get()).arrayBuffer(), text: async () => (await get()).text() };
+  };
+  return { name, entries: files.map(([path, size]) => [path, entry(path, size)]) };
+}
+
 /** Files from `<input webkitdirectory>`: paths start with the chosen folder's own name. */
 export function fromFiles(files) {
   return {
@@ -133,6 +160,15 @@ export async function mount({ name, entries }, progress) {
   }
   // An installation is named by its folder (data/installations/<id>), or by the folder chosen.
   const id = root.split('/').pop() || name || 'installation';
+  // Texture packs live beside the game, in the package folder's texture-packs
+  // (docs/graphics/texture-packs.md): mounted beside the installation when the package was chosen.
+  const tail = `data/installations/${id}`;
+  if (root === tail || root.endsWith(`/${tail}`)) {
+    const packs = `${root.slice(0, root.length - tail.length)}texture-packs/`;
+    for (const [path, entry] of byPath) {
+      if (path.startsWith(packs)) files.set(`texture-packs/${path.slice(packs.length)}`, entry);
+    }
+  }
 
   const sizes = new Map([...files].map(([path, file]) => [path, file.size]));
   const cache = new Map();
@@ -193,7 +229,7 @@ export async function mount({ name, entries }, progress) {
       stored(db, 'saved', 'readwrite', (saved) => saved.delete(key));
     },
   };
-  return { id, files: files.size };
+  return { id, files: files.size, packs: [...files.keys()].some((path) => path.startsWith('texture-packs/')) };
 }
 
 function mb(bytes) {
